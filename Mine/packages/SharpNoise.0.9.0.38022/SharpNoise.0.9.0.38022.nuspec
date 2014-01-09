@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>SharpNoise</id>
+    <version>0.9.0.38022</version>
+    <title>SharpNoise</title>
+    <authors>Raffael Thome</authors>
+    <owners>Raffael Thome</owners>
+    <licenseUrl>http://www.gnu.org/licenses/lgpl-3.0-standalone.html</licenseUrl>
+    <projectUrl>https://bitbucket.org/rthome/sharpnoise</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>A loose port of libNoise to C#</description>
+    <releaseNotes>NuGet package for version 0.9.0.38022 of SharpNoise.
+
+This release fixes some small problems. It also breaks API compatibility.</releaseNotes>
+    <copyright>Copyright Raffael Thome 2013</copyright>
+    <language />
+  </metadata>
+</package>
