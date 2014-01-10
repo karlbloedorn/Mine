@@ -3,4 +3,4 @@ Mine
 
 Simple voxel based "game"
 
-![Alt text](/screenshot.png)
+![Alt text](screenshot.png)
