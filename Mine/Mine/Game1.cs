@@ -18,11 +18,19 @@ namespace Mine
     public class MineGame : Game
     {
         public const int chunk_size = 16;
+        const float tex_w = 256;
+        const float tex_h = 272;
+        const float tile_w = 16;
+        const float tile_h = 16;
+        const float w_factor = tile_w / tex_w;
+        const float h_factor = tile_h / tex_h;
+
+        Texture2D texture;
+        public Dictionary<BlockType, Vector2[,]> texture_coordinates;
 
         GraphicsDeviceManager graphics;
         SpriteBatch sprite_batch;
         List<Chunk> loaded_chunks = new List<Chunk>();
-        public Dictionary<BlockType, Texture2D> block_textures;
         private BasicEffect cubeEffect;
         private MouseState prevMouseState;
         private Vector3 mouseRotationBuffer;   
@@ -67,6 +75,7 @@ namespace Mine
             graphics.IsFullScreen = true;
             Content.RootDirectory = "Content";
         }
+ 
 
         /// <summary>
         /// Allows the game to perform any initialization it needs to before starting to run.
@@ -76,35 +85,50 @@ namespace Mine
         /// </summary>
         protected override void Initialize()
         {
+            texture = LoadTexture("stitched_blocks");
+            texture_coordinates = new Dictionary<BlockType, Vector2[,]>();
+
+            AddTextureCoordinates(BlockType.Dirt, 6, 14, 6, 14, 6, 14);
+            AddTextureCoordinates(BlockType.Grass, 7, 14, 6, 12, 6, 14);
+            AddTextureCoordinates(BlockType.Snow, 8, 14, 8, 13, 6, 14);
+            AddTextureCoordinates(BlockType.Stone, 10,6);
+            AddTextureCoordinates(BlockType.Cobblestone, 11,6);
+            AddTextureCoordinates(BlockType.Gravel, 11, 5);
+            AddTextureCoordinates(BlockType.Coal,7,8 );
+            AddTextureCoordinates(BlockType.IronOre,8, 8);
+            AddTextureCoordinates(BlockType.GoldOre,9,8 );
+            AddTextureCoordinates(BlockType.DiamondOre,10,8 );
+            AddTextureCoordinates(BlockType.Sand, 15,7);
+            AddTextureCoordinates(BlockType.Oak_Wood,1,14,1,15,1,15);
+            AddTextureCoordinates(BlockType.Oak_Leaves,1,10);
+            AddTextureCoordinates(BlockType.Birch_Wood,2,14, 2,15,2,15);
+            AddTextureCoordinates(BlockType.Birch_Leaves,2,10);
+            AddTextureCoordinates(BlockType.Crafting_Table, 4, 9, 3, 8, 4, 13);
+
             Simplex noisemodule = new Simplex();
             SharpNoise.Models.Plane p = new SharpNoise.Models.Plane(noisemodule);
 
-      
-            for (int x = -10; x <10; x++)
+            for (int x = -7; x < 7; x++)
             {
-                for (int z = -10; z < 10; z++)
+              for (int z = -7; z < 7; z++)
+              {
+                for (int y = 0; y < 4; y++)
                 {
-                    for (int y = 0; y < 3; y++)
-                    {
-                        var chunk = new Chunk(this, x * chunk_size, y * chunk_size, z * chunk_size);
-                        chunk.Generate(p);
-                        loaded_chunks.Add(chunk);
-                    }
+                  var chunk = new Chunk(this, x * chunk_size, y * chunk_size, z * chunk_size);
+                  chunk.Generate(p);
+                  loaded_chunks.Add(chunk);
                 }
+              }
             }
 
             cubeEffect = new BasicEffect(GraphicsDevice);
-           
             cubeEffect.LightingEnabled = true;
-            
-
             cubeEffect.AmbientLightColor = new Vector3(0.5f, 0.5f, 0.5f);
             cubeEffect.DiffuseColor = new Vector3(0.5f, 0.5f, 0.5f);
             cubeEffect.SpecularColor = new Vector3(0.25f, 0.25f, 0.25f);
             cubeEffect.SpecularPower = 4.0f;
             cubeEffect.Alpha = 1.0f;
-            
-
+           
             if (cubeEffect.LightingEnabled)
             {
                 cubeEffect.DirectionalLight1.Enabled = true;
@@ -115,9 +139,7 @@ namespace Mine
                     cubeEffect.DirectionalLight1.Direction = Vector3.Normalize(new Vector3(0, -1, 0));
                     cubeEffect.DirectionalLight1.SpecularColor = Vector3.One;
                 }
-
                 cubeEffect.PreferPerPixelLighting = true;
-
             }
              
             cubeEffect.TextureEnabled = true;
@@ -140,13 +162,54 @@ namespace Mine
             prevMouseState = Mouse.GetState();
 
             RasterizerState rasterizerState = new RasterizerState();
-           //rasterizerState.FillMode = FillMode.WireFrame;
-           // rasterizerState.CullMode = CullMode.None;
+            //rasterizerState.FillMode = FillMode.WireFrame;
+            //rasterizerState.CullMode = CullMode.None;
+
+            graphics.SynchronizeWithVerticalRetrace = true;
             rasterizerState.MultiSampleAntiAlias = true;
             GraphicsDevice.RasterizerState = rasterizerState;
 
             this.IsMouseVisible = false;
             base.Initialize();
+        }
+
+
+        private void AddTextureCoordinates(BlockType t, short x, short y)
+        {
+          AddTextureCoordinates(t, x, y, x, y, x, y);
+        }
+        private void AddTextureCoordinates(BlockType t, short sides_x, short sides_y, short top_x, short top_y, short bottom_x, short bottom_y)
+        {
+          short[,] faces = new short[6, 2];
+          faces[Block.XNegative, 0] = sides_x;
+          faces[Block.XPositive, 0] = sides_x;
+          faces[Block.YNegative, 0] = bottom_x;
+          faces[Block.YPositive, 0] = top_x;
+          faces[Block.ZNegative, 0] = sides_x;
+          faces[Block.ZPositive, 0] = sides_x;
+          faces[Block.XNegative, 1] = sides_y;
+          faces[Block.XPositive, 1] = sides_y;
+          faces[Block.YNegative, 1] = bottom_y;
+          faces[Block.YPositive, 1] = top_y;
+          faces[Block.ZNegative, 1] = sides_y;
+          faces[Block.ZPositive, 1] = sides_y;
+
+          Vector2[,] cur_coordinates = new Vector2[6, 4];
+
+          for (int i = 0; i < 6; i++)
+          {
+            short col = faces[i, 0];
+            short row = faces[i, 1];
+            float x_tex_beg = w_factor * (col - 1 + 0);
+            float x_tex_end = w_factor * (col - 1 + 1);
+            float y_tex_beg = h_factor * (row - 1 + 0);
+            float y_tex_end = h_factor * (row - 1 + 1);
+            cur_coordinates[i, Block.textureBottomLeft] = new Vector2(x_tex_beg, y_tex_end);
+            cur_coordinates[i, Block.textureTopLeft] = new Vector2(x_tex_beg, y_tex_beg);
+            cur_coordinates[i, Block.textureTopRight] = new Vector2(x_tex_end, y_tex_beg);
+            cur_coordinates[i, Block.textureBottomRight] = new Vector2(x_tex_end, y_tex_end);
+          }
+          texture_coordinates.Add(t, cur_coordinates);
         }
 
         private Texture2D LoadTexture(string name)
@@ -162,16 +225,6 @@ namespace Mine
         {
             // Create a new SpriteBatch, which can be used to draw textures.
             sprite_batch = new SpriteBatch(GraphicsDevice);
-            block_textures = new Dictionary<BlockType, Texture2D>();
-            block_textures.Add(BlockType.DiamondOre, LoadTexture("diamond_ore"));
-            block_textures.Add(BlockType.Cobblestone, LoadTexture("cobblestone"));
-            block_textures.Add(BlockType.Dirt, LoadTexture("dirt"));
-            block_textures.Add(BlockType.Grass, LoadTexture("grass"));
-            block_textures.Add(BlockType.Sand, LoadTexture("sand"));
-            block_textures.Add(BlockType.Oak, LoadTexture("log_big_oak"));
-            block_textures.Add(BlockType.Oak_Top, LoadTexture("log_oak_top"));
-            block_textures.Add(BlockType.Snow, LoadTexture("grass_side_snowed"));
-            block_textures.Add(BlockType.Snow_Top, LoadTexture("snow"));
         }
 
 
@@ -348,35 +401,21 @@ namespace Mine
         /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Draw(GameTime gameTime)
         {
-            if (block_textures.Count < 5)
-            {
-                return;
-            }
             GraphicsDevice.Clear(Color.SkyBlue);
-
+            if (this.texture == null) {
+              return;
+            }
+            cubeEffect.Texture = texture;
             cubeEffect.View = View;
-
             foreach (var chunk in loaded_chunks)
             {
-                if(!chunk.active){
+                if(!chunk.active || chunk.vertex_count ==0){
                     continue;
                 }
-                foreach (BlockType t in chunk.block_sets.Keys)
-                {
-                    var block_set = chunk.block_sets[t];
-                    for (int i = 0; i < 6; i++)
-                    {
-                        if (block_set.vertex_buffers[i] != null)
-                        {
-                            cubeEffect.Texture = block_textures[(BlockType)block_set.textures[i]];
-                            cubeEffect.CurrentTechnique.Passes[0].Apply();
-                            GraphicsDevice.SetVertexBuffer(block_set.vertex_buffers[i]);
-                            GraphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, block_set.vertex_counts[i]);
-                        }
-                    }
-                }
+                cubeEffect.CurrentTechnique.Passes[0].Apply();
+                GraphicsDevice.SetVertexBuffer(chunk.vertex_buffer);
+                GraphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, chunk.vertex_count);
             }
-
             base.Draw(gameTime);
         }
     }

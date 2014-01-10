@@ -17,7 +17,11 @@ namespace Mine.Voxels
         private Block[, ,] blocks;
         private MineGame game;
         public bool active;
-        public Dictionary<BlockType, BlockSet> block_sets;
+
+        public int vertex_count = 0;
+        public VertexBuffer vertex_buffer;
+        public VertexPositionNormalTexture[] block_vertices;
+        public int block_vertex_index = 0;
 
         public Chunk(MineGame g, int x, int y, int z)
         {
@@ -26,15 +30,6 @@ namespace Mine.Voxels
             this.chunk_z = z;
             this.game = g;
             this.blocks = new Block[MineGame.chunk_size, MineGame.chunk_size, MineGame.chunk_size];
-
-            block_sets = new Dictionary<BlockType, BlockSet>();
-
-            var oak = new BlockSet(BlockType.Oak,BlockType.Oak_Top);
-            block_sets.Add(BlockType.Oak, oak);
-            var dirt = new BlockSet(BlockType.Dirt, null);
-            block_sets.Add(BlockType.Dirt, dirt);
-            var snow = new BlockSet(BlockType.Snow, BlockType.Snow_Top);
-            block_sets.Add(BlockType.Snow, snow);
         }
         public void Generate(SharpNoise.Models.Plane noise_plane)
         {
@@ -44,17 +39,21 @@ namespace Mine.Voxels
                 {
                     for (int y = 0; y < MineGame.chunk_size; y++)
                     {
-                        var pvalue = noise_plane.GetValue((chunk_x + x) / 200.0, (chunk_z + z) / 200.0);
-                        var height = 15  + pvalue * 10;
-
+                        var pvalue = noise_plane.GetValue((chunk_x + x) / 125.5, (chunk_z + z) / 125.5);
+                        var height = 16 + pvalue * 12;
+                     
                         BlockType t;
-                        if (height > (chunk_y + y))
+                        if ((int) height == (chunk_y + y))
                         {
-                            t = BlockType.Snow;
+                          t = BlockType.Snow;
+                        }
+                        else if ((int)height > (chunk_y + y))
+                        {
+                          t = BlockType.Dirt;
                         }
                         else
                         {
-                            t = BlockType.Air;
+                          t = BlockType.Air;
                         }
                         var b = new Block(chunk_x + x, chunk_y + y, chunk_z + z, t);
                         b.active = (b.type != BlockType.Air);
@@ -64,32 +63,64 @@ namespace Mine.Voxels
             }
             if (chunk_x > 3 || chunk_z > 3) { return; }
 
-            Random random = new Random( (int)( 10000* noise_plane.GetValue((chunk_x) / 200.0, (chunk_z) / 200.0)));
+            Random random = new Random( (int)( 10000* noise_plane.GetValue((chunk_x) / 205.0, (chunk_z) / 205.0)));
 
-            for (int i = 0; i <3; i++)
+            for (int i = 0; i <2; i++)
             {
-                int tree_x = random.Next(0, 15);
-                int tree_z = random.Next(0, 15);
+                int tree_x = random.Next(4, 12);
+                int tree_z = random.Next(4, 12);
                 var tree_pvalue = noise_plane.GetValue((chunk_x + tree_x) / 200.0, (chunk_z + tree_z) / 200.0);
                 var tree_height = (int)(Math.Floor(15 + tree_pvalue * 10));
 
-                if (tree_height > chunk_y && (tree_height + 4) < chunk_y + MineGame.chunk_size)
+                int base_tree_level = tree_height - chunk_y-1;
+                if (tree_height > chunk_y && (tree_height + 7) < chunk_y + MineGame.chunk_size && tree_x > 4 && tree_x < (MineGame.chunk_size - 4) && tree_z > 4 && tree_z < (MineGame.chunk_size - 4))
                 {
-                    for (int m = 0; m < 4; m++)
+                    for (int m = 0; m < 8; m++)
                     {
-                        blocks[tree_x, tree_height - chunk_y + m, tree_z].type = BlockType.Oak;
-                        blocks[tree_x, tree_height - chunk_y + m, tree_z].active = true;
+                      int level = base_tree_level + m;
+                      if (m < 7)
+                      {
+                        blocks[tree_x, level, tree_z].type = BlockType.Oak_Wood;
+                        blocks[tree_x, level, tree_z].active = true;
+                      }
+                      if (m == 4 || m == 5 )
+                      {
+                        for (int a = -2; a < 3;a++)
+                        {
+                          for (int b = -2; b < 3; b++)
+                          {
+                             if( (a != 0 || b != 0) &&  (Math.Abs(a) + Math.Abs( b ) != 4) ){
+                               blocks[tree_x + a, level, tree_z+b].type = BlockType.Oak_Leaves;
+                               blocks[tree_x + a, level, tree_z+b].active = true;
+                             }
+                          }
+                        }
+                      }
+                      if (m == 6 || m == 7)
+                      {
+                        blocks[tree_x + 1, level, tree_z].type = BlockType.Oak_Leaves;
+                        blocks[tree_x + 1, level, tree_z].active = true;
+
+                        blocks[tree_x - 1, level, tree_z].type = BlockType.Oak_Leaves;
+                        blocks[tree_x - 1, level, tree_z].active = true;
+
+                        blocks[tree_x, level, tree_z - 1].type = BlockType.Oak_Leaves;
+                        blocks[tree_x, level, tree_z - 1].active = true;
+
+                        blocks[tree_x, level, tree_z + 1].type = BlockType.Oak_Leaves;
+                        blocks[tree_x, level, tree_z + 1].active = true;
+                      }
+                      if (m == 7)
+                      {
+                        blocks[tree_x, level, tree_z].type = BlockType.Oak_Leaves;
+                        blocks[tree_x, level, tree_z].active = true;
+                      }
                     }
                 }
             }
         }
-
         public void Cull(){
-            foreach(BlockType t in block_sets.Keys){
-               for(int i = 0; i < 6; i++){
-                   block_sets[t].vertex_counts[i] = 0;
-               }
-            }
+            vertex_count = 0;
             for (int x = 0; x < MineGame.chunk_size; x++)
             {
                 for (int y = 0; y < MineGame.chunk_size; y++)
@@ -102,43 +133,26 @@ namespace Mine.Voxels
                         {
                             continue;
                         }
-                        var block_set = block_sets[cur.type];
-
                         cur.render_faces[Block.YPositive] = Convert.ToInt16(y == MineGame.chunk_size - 1 || !blocks[x, y + 1, z].active);
                         cur.render_faces[Block.XNegative] = Convert.ToInt16(x == 0 || !blocks[x - 1, y, z].active);
                         cur.render_faces[Block.XPositive] = Convert.ToInt16(x == MineGame.chunk_size - 1 || !blocks[x + 1, y, z].active);
                         cur.render_faces[Block.YNegative] = Convert.ToInt16(y == 0 || !blocks[x, y - 1, z].active);
                         cur.render_faces[Block.ZNegative] = Convert.ToInt16(z == 0 || !blocks[x, y, z - 1].active);
                         cur.render_faces[Block.ZPositive] = Convert.ToInt16(z == MineGame.chunk_size - 1 || !blocks[x, y, z + 1].active);
-
-                        for(int i = 0; i < 6; i++){
-                            if(block_set.textures[i] != null){
-                                block_set.vertex_counts[i] += 6*cur.render_faces[i];
-                            } else {
-                                block_set.vertex_counts[0] += 6*cur.render_faces[i];
-                            }
-                        }
+                        vertex_count += 6 * cur.renderedVerticeCount();
                     }
                 }
             }
         }
         public void UpdateBuffer(GraphicsDevice graphics_device)
         {
-            foreach(BlockType t in block_sets.Keys){
-                var block_set = block_sets[t];
-                for(int i = 0; i < 6; i++){
-                    if(block_set.textures[i] != null){
-                          int count =  block_set.vertex_counts[i];
-                          if (count != 0)
-                          {
-                              block_set.block_vertices[i] = new VertexPositionNormalTexture[block_set.vertex_counts[i]];
-                              block_set.block_vertex_index[i] = 0;
-                              block_set.vertex_buffers[i] = new VertexBuffer(graphics_device, VertexPositionNormalTexture.VertexDeclaration, count, BufferUsage.WriteOnly);
-                          }
-                    } 
-                }
+            if (vertex_count != 0)
+            {
+                block_vertices = new VertexPositionNormalTexture[vertex_count];
+                block_vertex_index = 0;
+                vertex_buffer = new VertexBuffer(graphics_device, VertexPositionNormalTexture.VertexDeclaration, vertex_count, BufferUsage.WriteOnly);
             }
-
+             
             for (int x = 0; x < MineGame.chunk_size; x++)
             {
                 for (int y = 0; y < MineGame.chunk_size; y++)
@@ -150,7 +164,6 @@ namespace Mine.Voxels
                         {
                             continue;
                         }
-
                         Vector3 topLeftFront = cur.shapePosition + new Vector3(-0.5f, 0.5f, -0.5f);
                         Vector3 bottomLeftFront = cur.shapePosition + new Vector3(-0.5f, -0.5f, -0.5f);
                         Vector3 topRightFront = cur.shapePosition + new Vector3(0.5f, 0.5f, -0.5f);
@@ -159,7 +172,6 @@ namespace Mine.Voxels
                         Vector3 topRightBack = cur.shapePosition + new Vector3(0.5f, 0.5f, 0.5f);
                         Vector3 bottomLeftBack = cur.shapePosition + new Vector3(-0.5f, -0.5f, 0.5f);
                         Vector3 bottomRightBack = cur.shapePosition + new Vector3(0.5f, -0.5f, 0.5f);
-
                         Vector3 frontNormal = new Vector3(0.0f, 0.0f, 1.0f);
                         Vector3 backNormal = new Vector3(0.0f, 0.0f, -1.0f);
                         Vector3 topNormal = new Vector3(0.0f, 1.0f, 0.0f) ;
@@ -167,131 +179,78 @@ namespace Mine.Voxels
                         Vector3 leftNormal = new Vector3(-1.0f, 0.0f, 0.0f);
                         Vector3 rightNormal = new Vector3(1.0f, 0.0f, 0.0f);
 
-                        Vector2 textureTopLeft = new Vector2(1.0f, 0.0f);
-                        Vector2 textureTopRight = new Vector2(0.0f, 0.0f);
-                        Vector2 textureBottomLeft = new Vector2(1.0f, 1.0f);
-                        Vector2 textureBottomRight = new Vector2(0.0f, 1.0f);
-
-                        var block_set = block_sets[cur.type];
-
-                        if (cur.render_faces[Block.ZNegative] == 1) //front
+                        for (int i = 0; i < 6; i++)
                         {
-                            int index = 0;
-                            if(block_set.textures[Block.ZNegative] != null){
-                                index = Block.ZNegative;
-                            }
-                            int offset = block_set.block_vertex_index[index];
-                            block_set.block_vertices[index][offset + 0] = new VertexPositionNormalTexture(topLeftFront, frontNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 1] = new VertexPositionNormalTexture(bottomLeftFront, frontNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 2] = new VertexPositionNormalTexture(topRightFront, frontNormal, textureTopRight);
-                            block_set.block_vertices[index][offset + 3] = new VertexPositionNormalTexture(bottomLeftFront, frontNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 4] = new VertexPositionNormalTexture(bottomRightFront, frontNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 5] = new VertexPositionNormalTexture(topRightFront, frontNormal, textureTopRight);
-                            block_set.block_vertex_index[index] += 6;
-                        }
-                        if (cur.render_faces[Block.ZPositive] == 1) //back
-                        {
-                            int index = 0;
-                            if (block_set.textures[Block.ZPositive] != null)
+                          if (cur.render_faces[i] == 1) //render it
+                          {
+                            Vector2 textureTopLeft = game.texture_coordinates[cur.type][i, Block.textureTopLeft];
+                            Vector2 textureBottomLeft = game.texture_coordinates[cur.type][i, Block.textureBottomLeft];
+                            Vector2 textureTopRight = game.texture_coordinates[cur.type][i, Block.textureTopRight];
+                            Vector2 textureBottomRight = game.texture_coordinates[cur.type][i, Block.textureBottomRight];
+
+                            int offset = block_vertex_index;
+
+                            switch (i)
                             {
-                                index = Block.ZPositive;
+                              case Block.ZNegative: //front
+                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftFront, frontNormal, textureTopLeft);
+                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomLeftFront, frontNormal, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionNormalTexture(topRightFront, frontNormal, textureTopRight);
+                                block_vertices[offset + 3] = new VertexPositionNormalTexture(bottomLeftFront, frontNormal, textureBottomLeft);
+                                block_vertices[offset + 4] = new VertexPositionNormalTexture(bottomRightFront, frontNormal, textureBottomRight);
+                                block_vertices[offset + 5] = new VertexPositionNormalTexture(topRightFront, frontNormal, textureTopRight);
+                                break;
+                              case Block.ZPositive: //back
+                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftBack, backNormal, textureTopRight);
+                                block_vertices[offset + 1] = new VertexPositionNormalTexture(topRightBack, backNormal, textureTopLeft);
+                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomLeftBack, backNormal, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionNormalTexture(bottomLeftBack, backNormal, textureBottomRight);
+                                block_vertices[offset + 4] = new VertexPositionNormalTexture(topRightBack, backNormal, textureTopLeft);
+                                block_vertices[offset + 5] = new VertexPositionNormalTexture(bottomRightBack, backNormal, textureBottomLeft);
+                                break;
+                              case Block.YPositive: //top
+                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftFront, topNormal, textureBottomLeft);
+                                block_vertices[offset + 1] = new VertexPositionNormalTexture(topRightBack, topNormal, textureTopRight);
+                                block_vertices[offset + 2] = new VertexPositionNormalTexture(topLeftBack, topNormal, textureTopLeft);
+                                block_vertices[offset + 3] = new VertexPositionNormalTexture(topLeftFront, topNormal, textureBottomLeft);
+                                block_vertices[offset + 4] = new VertexPositionNormalTexture(topRightFront, topNormal, textureBottomRight);
+                                block_vertices[offset + 5] = new VertexPositionNormalTexture(topRightBack, topNormal, textureTopRight);
+                                break;
+                              case Block.YNegative: //Bottom
+                                block_vertices[offset + 0] = new VertexPositionNormalTexture(bottomLeftFront, bottomNormal, textureTopLeft);
+                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomLeftBack, bottomNormal, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomRightBack, bottomNormal, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionNormalTexture(bottomLeftFront, bottomNormal, textureTopLeft);
+                                block_vertices[offset + 4] = new VertexPositionNormalTexture(bottomRightBack, bottomNormal, textureBottomRight);
+                                block_vertices[offset + 5] = new VertexPositionNormalTexture(bottomRightFront, bottomNormal, textureTopRight);
+                                break;
+                              case Block.XPositive:  //Right
+                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topRightFront, rightNormal, textureTopLeft);
+                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomRightFront, rightNormal, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomRightBack, rightNormal, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionNormalTexture(topRightBack, rightNormal, textureTopRight);
+                                block_vertices[offset + 4] = new VertexPositionNormalTexture(topRightFront, rightNormal, textureTopLeft);
+                                block_vertices[offset + 5] = new VertexPositionNormalTexture(bottomRightBack, rightNormal, textureBottomRight);
+                                break;
+                              case Block.XNegative: //Left
+                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftFront, leftNormal, textureTopRight);
+                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomLeftBack, leftNormal, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomLeftFront, leftNormal, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionNormalTexture(topLeftBack, leftNormal, textureTopLeft);
+                                block_vertices[offset + 4] = new VertexPositionNormalTexture(bottomLeftBack, leftNormal, textureBottomLeft);
+                                block_vertices[offset + 5] = new VertexPositionNormalTexture(topLeftFront, leftNormal, textureTopRight);
+                                break;
                             }
-                            int offset = block_set.block_vertex_index[index];
-                            block_set.block_vertices[index][offset + 0] = new VertexPositionNormalTexture(topLeftBack, backNormal, textureTopRight);
-                            block_set.block_vertices[index][offset + 1] = new VertexPositionNormalTexture(topRightBack, backNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 2] = new VertexPositionNormalTexture(bottomLeftBack, backNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 3] = new VertexPositionNormalTexture(bottomLeftBack, backNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 4] = new VertexPositionNormalTexture(topRightBack, backNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 5] = new VertexPositionNormalTexture(bottomRightBack, backNormal, textureBottomLeft);
-
-                            block_set.block_vertex_index[index] += 6;
-                        }
-                        if (cur.render_faces[Block.YPositive] == 1) //top
-                        {
-                            int index = 0;
-                            if (block_set.textures[Block.YPositive] != null)
-                            {
-                                index = Block.YPositive;
-                            }
-                            int offset = block_set.block_vertex_index[index];
-                            block_set.block_vertices[index][offset + 0] = new VertexPositionNormalTexture(topLeftFront, topNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 1] = new VertexPositionNormalTexture(topRightBack, topNormal, textureTopRight);
-                            block_set.block_vertices[index][offset + 2] = new VertexPositionNormalTexture(topLeftBack, topNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 3] = new VertexPositionNormalTexture(topLeftFront, topNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 4] = new VertexPositionNormalTexture(topRightFront, topNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 5] = new VertexPositionNormalTexture(topRightBack, topNormal, textureTopRight);
-
-                            block_set.block_vertex_index[index] += 6;
-                        }
-                        if (cur.render_faces[Block.YNegative] == 1) // bottom
-                        {
-                            int index = 0;
-                            if (block_set.textures[Block.YNegative] != null)
-                            {
-                                index = Block.YNegative;
-                            }
-                            int offset = block_set.block_vertex_index[index];
-                            block_set.block_vertices[index][offset + 0] = new VertexPositionNormalTexture(bottomLeftFront, bottomNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 1] = new VertexPositionNormalTexture(bottomLeftBack, bottomNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 2] = new VertexPositionNormalTexture(bottomRightBack, bottomNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 3] = new VertexPositionNormalTexture(bottomLeftFront, bottomNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 4] = new VertexPositionNormalTexture(bottomRightBack, bottomNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 5] = new VertexPositionNormalTexture(bottomRightFront, bottomNormal, textureTopRight);
-
-                            block_set.block_vertex_index[index] += 6;
-                        }
-                        if (cur.render_faces[Block.XNegative] == 1) //left
-                        {
-                            int index = 0;
-                            if (block_set.textures[Block.XNegative] != null)
-                            {
-                                index = Block.XNegative;
-                            }
-                            int offset = block_set.block_vertex_index[index];
-
-                            block_set.block_vertices[index][offset + 0] = new VertexPositionNormalTexture(topLeftFront, leftNormal, textureTopRight);
-                            block_set.block_vertices[index][offset + 1] = new VertexPositionNormalTexture(bottomLeftBack, leftNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 2] = new VertexPositionNormalTexture(bottomLeftFront, leftNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 3] = new VertexPositionNormalTexture(topLeftBack, leftNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 4] = new VertexPositionNormalTexture(bottomLeftBack, leftNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 5] = new VertexPositionNormalTexture(topLeftFront, leftNormal, textureTopRight);
-
-                            block_set.block_vertex_index[index] += 6;
-                        }
-                        if (cur.render_faces[Block.XPositive] == 1) //right
-                        {
-                            int index = 0;
-                            if (block_set.textures[Block.XPositive] != null)
-                            {
-                                index = Block.XPositive;
-                            }
-                            int offset = block_set.block_vertex_index[index];
-
-                            block_set.block_vertices[index][offset + 0] = new VertexPositionNormalTexture(topRightFront, rightNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 1] = new VertexPositionNormalTexture(bottomRightFront, rightNormal, textureBottomLeft);
-                            block_set.block_vertices[index][offset + 2] = new VertexPositionNormalTexture(bottomRightBack, rightNormal, textureBottomRight);
-                            block_set.block_vertices[index][offset + 3] = new VertexPositionNormalTexture(topRightBack, rightNormal, textureTopRight);
-                            block_set.block_vertices[index][offset + 4] = new VertexPositionNormalTexture(topRightFront, rightNormal, textureTopLeft);
-                            block_set.block_vertices[index][offset + 5] = new VertexPositionNormalTexture(bottomRightBack, rightNormal, textureBottomRight);
-
-                            block_set.block_vertex_index[index] += 6;
+                            block_vertex_index += 6;
+                          }
                         }
                     }
                 }
             }
-
-            foreach (BlockType t in block_sets.Keys)
+            if (vertex_buffer != null)
             {
-                var block_set = block_sets[t];
-                for (int i = 0; i < 6; i++)
-                {
-
-                    if (block_set.vertex_buffers[i] != null)
-                    {
-                        block_set.vertex_buffers[i].SetData(block_set.block_vertices[i]);
-                        block_set.block_vertices[i] = null;
-                    }
-                }
+                vertex_buffer.SetData(block_vertices);
+                block_vertices = null;
             }
         }
     }

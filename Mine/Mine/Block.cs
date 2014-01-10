@@ -12,14 +12,21 @@ namespace Mine
     {
         Air,
         Dirt,
-        Cobblestone,
-        DiamondOre,
-        Grass,
-        Sand,
-        Oak,
-        Oak_Top,
         Snow,
-        Snow_Top
+        Grass,
+        Stone,
+        Cobblestone,
+        IronOre,
+        DiamondOre,
+        GoldOre,
+        Coal,
+        Gravel,
+        Sand,
+        Crafting_Table,
+        Oak_Wood,
+        Oak_Leaves,
+        Birch_Wood,
+        Birch_Leaves,
     }
 
     public class Block
@@ -30,6 +37,10 @@ namespace Mine
         public const int YPositive = 3;
         public const int ZNegative = 4;
         public const int ZPositive = 5;
+        public const int textureBottomLeft = 0;
+        public const int textureTopLeft = 1;
+        public const int textureTopRight = 2;
+        public const int textureBottomRight = 3;
 
         public Vector3 shapePosition;
         public BlockType type;
