@@ -45,9 +45,7 @@ namespace Mine
         public Vector3 shapePosition;
         public BlockType type;
         public bool active;
-
         public short[] render_faces = new short[6];
-
         public Block(float x, float y, float z, BlockType t)
         {
             this.shapePosition = new Vector3(x, y, z);

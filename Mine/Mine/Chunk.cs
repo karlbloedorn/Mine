@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Mine.Voxels
+namespace Mine
 {
     public class Chunk
     {
@@ -17,12 +17,11 @@ namespace Mine.Voxels
         private Block[, ,] blocks;
         private MineGame game;
         public bool active;
-
+        public bool buffer_ready;
         public int vertex_count = 0;
         public VertexBuffer vertex_buffer;
         public VertexPositionNormalTexture[] block_vertices;
         public int block_vertex_index = 0;
-
         public Chunk(MineGame g, int x, int y, int z)
         {
             this.chunk_x = x;
@@ -45,7 +44,7 @@ namespace Mine.Voxels
                         BlockType t;
                         if ((int) height == (chunk_y + y))
                         {
-                          t = BlockType.Snow;
+                          t = BlockType.Sand;
                         }
                         else if ((int)height > (chunk_y + y))
                         {
@@ -144,13 +143,12 @@ namespace Mine.Voxels
                 }
             }
         }
-        public void UpdateBuffer(GraphicsDevice graphics_device)
+        public void UpdateBuffer()
         {
             if (vertex_count != 0)
             {
                 block_vertices = new VertexPositionNormalTexture[vertex_count];
                 block_vertex_index = 0;
-                vertex_buffer = new VertexBuffer(graphics_device, VertexPositionNormalTexture.VertexDeclaration, vertex_count, BufferUsage.WriteOnly);
             }
              
             for (int x = 0; x < MineGame.chunk_size; x++)
@@ -249,7 +247,6 @@ namespace Mine.Voxels
             }
             if (vertex_buffer != null)
             {
-                vertex_buffer.SetData(block_vertices);
                 block_vertices = null;
             }
         }
