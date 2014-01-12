@@ -17,8 +17,8 @@ namespace Mine
       public MineGame game;
       public GraphicsDevice GraphicsDevice;
 
-      public ConcurrentDictionary<Point3, Chunk> requested_chunks;
-      public ConcurrentDictionary<Point3, Chunk> loaded_chunks;
+      public Dictionary<Point3, Chunk> requested_chunks;
+      public Dictionary<Point3, Chunk> loaded_chunks;
       private Simplex noisemodule;
       private SharpNoise.Models.Plane p;
 
@@ -31,16 +31,20 @@ namespace Mine
       public List<Point3> Near(Vector3 position, int distance)
       {
         var nearest = new List<Point3>();
-        int x = (int) position.X / 16;
-        int z = (int) position.Z / 16;
+        int x = (int) position.X / MineGame.chunk_size;
+        int z = (int)position.Z / MineGame.chunk_size;
 
-        for (int y = 0; y < 2; y++)
+        for (int y = 0; y < 1; y++)
         {
           for (int offset_x = -distance; offset_x < distance; offset_x++)
           {
             for (int offset_z = -distance; offset_z < distance; offset_z++)
             {
-              nearest.Add(new Point3(offset_x+x, y, z + offset_z));
+              double dist = Math.Sqrt(Math.Pow(offset_x , 2)+ Math.Pow(offset_z, 2));
+              if (dist < distance)
+              {
+                nearest.Add(new Point3(offset_x + x, y, z + offset_z));
+              }
             }
           }
         }

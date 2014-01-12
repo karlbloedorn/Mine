@@ -23,11 +23,20 @@ namespace Mine
         const float tile_h = 16;
         const float w_factor = tile_w / tex_w;
         const float h_factor = tile_h / tex_h;
-        Texture2D texture;
+
+        int frameCounter = 0;
+        int frameRate = 0;
+        TimeSpan elapsedTime = TimeSpan.Zero;
+
+        Texture2D stitched_blocks;
+        Texture2D stitched_items;
         public Dictionary<BlockType, Vector2[,]> texture_coordinates;
-        public Dictionary<Point3, Task<Chunk>> requested_chunk_tasks;
+        public Dictionary<Point3, Task<Chunk>> waiting_for_load;
+        public Dictionary<Point3, Task<Chunk>> waiting_for_setbuffer;
+
         GraphicsDeviceManager graphics;
         SpriteBatch sprite_batch;
+        private SpriteFont Font1;
         World world;
         private BasicEffect cubeEffect;
         private MouseState prevMouseState;
@@ -35,7 +44,7 @@ namespace Mine
         private Vector3 cameraPosition;
         private Vector3 cameraRotation;
         private Vector3 cameraLookAt;
-        private float cameraSpeed = 29.0f;
+        private float cameraSpeed = 109.0f;
         public Vector3 Position
         {
             get { return cameraPosition; }
@@ -72,33 +81,37 @@ namespace Mine
             graphics.IsFullScreen = true;
             Content.RootDirectory = "Content";
         }
-
         protected override void Initialize()
         {
-          ThreadPool.SetMaxThreads(16, 16);
+          ThreadPool.SetMaxThreads(14, 14);
 
-            texture = LoadTexture("stitched_blocks");
             texture_coordinates = new Dictionary<BlockType, Vector2[,]>();
-            requested_chunk_tasks = new Dictionary<Point3, Task<Chunk>>();
-
+            
+            waiting_for_load = new Dictionary<Point3, Task<Chunk>>();
+            waiting_for_setbuffer = new Dictionary<Point3, Task<Chunk>>();
+            Font1 = Content.Load<SpriteFont>("Courier New");
+            stitched_blocks = LoadTexture("stitched_blocks");
+            stitched_items = LoadTexture("stitched_items");
             AddTextureCoordinates(BlockType.Dirt, 6, 14, 6, 14, 6, 14);
             AddTextureCoordinates(BlockType.Grass, 7, 14, 6, 12, 6, 14);
             AddTextureCoordinates(BlockType.Snow, 8, 14, 8, 13, 6, 14);
-            AddTextureCoordinates(BlockType.Stone, 10,6);
-            AddTextureCoordinates(BlockType.Cobblestone, 11,6);
+            AddTextureCoordinates(BlockType.Stone, 10, 6);
+            AddTextureCoordinates(BlockType.Cobblestone, 11, 6);
             AddTextureCoordinates(BlockType.Gravel, 11, 5);
-            AddTextureCoordinates(BlockType.Coal,7,8 );
-            AddTextureCoordinates(BlockType.IronOre,8, 8);
-            AddTextureCoordinates(BlockType.GoldOre,9,8 );
-            AddTextureCoordinates(BlockType.DiamondOre,10,8 );
-            AddTextureCoordinates(BlockType.Sand, 15,7);
-            AddTextureCoordinates(BlockType.Oak_Wood,1,14,1,15,1,15);
-            AddTextureCoordinates(BlockType.Oak_Leaves,1,10);
-            AddTextureCoordinates(BlockType.Birch_Wood,2,14, 2,15,2,15);
-            AddTextureCoordinates(BlockType.Birch_Leaves,2,10);
+            AddTextureCoordinates(BlockType.Coal, 7, 8);
+            AddTextureCoordinates(BlockType.IronOre, 8, 8);
+            AddTextureCoordinates(BlockType.GoldOre, 9, 8);
+            AddTextureCoordinates(BlockType.DiamondOre, 10, 8);
+            AddTextureCoordinates(BlockType.Sand, 15, 7);
+            AddTextureCoordinates(BlockType.Oak_Wood, 1, 14, 1, 15, 1, 15);
+            AddTextureCoordinates(BlockType.Oak_Leaves, 1, 10);
+            AddTextureCoordinates(BlockType.Birch_Wood, 2, 14, 2, 15, 2, 15);
+            AddTextureCoordinates(BlockType.Birch_Leaves, 2, 10);
             AddTextureCoordinates(BlockType.Crafting_Table, 4, 9, 3, 8, 4, 13);
 
+
             cubeEffect = new BasicEffect(GraphicsDevice);
+            cubeEffect.Texture = stitched_blocks;
             cubeEffect.LightingEnabled = true;
             cubeEffect.AmbientLightColor = new Vector3(0.5f, 0.5f, 0.5f);
             cubeEffect.DiffuseColor = new Vector3(0.5f, 0.5f, 0.5f);
@@ -127,7 +140,6 @@ namespace Mine
                 0.05f,
                 1000.0f);
             cubeEffect.Projection = Projection;
-
             GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
 
             MoveTo(new Vector3(0f,40f, -250f), new Vector3(0f, 0f, 0f));
@@ -137,26 +149,16 @@ namespace Mine
             Mouse.SetPosition(centerX, centerY);
 
             prevMouseState = Mouse.GetState();
-
-            RasterizerState rasterizerState = new RasterizerState();
-            //rasterizerState.FillMode = FillMode.WireFrame;
-            //rasterizerState.CullMode = CullMode.None;
-
-            graphics.SynchronizeWithVerticalRetrace = true;
-            rasterizerState.MultiSampleAntiAlias = true;
-            GraphicsDevice.RasterizerState = rasterizerState;
-
             this.IsMouseVisible = false;
 
             world = new World();
             world.game = this;
-            world.loaded_chunks = new ConcurrentDictionary<Point3, Chunk>();
-            world.requested_chunks = new ConcurrentDictionary<Point3, Chunk>();
+            world.loaded_chunks = new Dictionary<Point3, Chunk>();
+            world.requested_chunks = new Dictionary<Point3, Chunk>();
 
             world.GraphicsDevice = GraphicsDevice;
             base.Initialize();
         }
- 
         private void AddTextureCoordinates(BlockType t, short x, short y)
         {
           AddTextureCoordinates(t, x, y, x, y, x, y);
@@ -209,6 +211,15 @@ namespace Mine
         }
         protected override void Update(GameTime gameTime)
         {
+          elapsedTime += gameTime.ElapsedGameTime;
+          if (elapsedTime > TimeSpan.FromSeconds(1))
+          {
+            elapsedTime -= TimeSpan.FromSeconds(1);
+            frameRate = frameCounter;
+            frameCounter = 0;
+          }
+
+
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             if (this.IsActive)
@@ -281,31 +292,41 @@ namespace Mine
             }
 
             List<Point3> finishedTasks = new List<Point3>();
-            foreach (var task in requested_chunk_tasks)
+
+            int count = 0;
+            foreach (var task in waiting_for_load)
             {
               if (task.Value.IsCompleted)
               {
-                Chunk result = task.Value.Result;
-                if (result.vertex_count > 0)
+                Chunk c = task.Value.Result;
+                if (c.vertex_count > 0)
                 {
-                  result.vertex_buffer = new VertexBuffer(GraphicsDevice, VertexPositionNormalTexture.VertexDeclaration, result.vertex_count, BufferUsage.WriteOnly);
-                  result.vertex_buffer.SetData(result.block_vertices);
+                  count++;
+                  c.vertex_buffer = new VertexBuffer(GraphicsDevice, VertexPositionNormalTexture.VertexDeclaration, c.vertex_count, BufferUsage.WriteOnly);
+                  c.vertex_buffer.SetData(c.block_vertices);
+
                 }
-                result.active = true;
-                world.loaded_chunks.TryAdd(task.Key, result);
+                c.active = true;
+                world.loaded_chunks.Add(task.Key, c);
                 finishedTasks.Add(task.Key);
+                if (count > 3)
+                {
+                  break;
+                }
               }
             }
             foreach( var task in finishedTasks)
             {
-                 requested_chunk_tasks.Remove(task);
+                 waiting_for_load.Remove(task);
             }
             finishedTasks.Clear();
 
             var nearest = world.Near(this.Position,10);
+            var nearest_for_delete = world.Near(this.Position, 20);
+
             nearest.ForEach(x =>
             {
-              if (world.loaded_chunks.ContainsKey(x) || requested_chunk_tasks.ContainsKey(x))
+              if (world.loaded_chunks.ContainsKey(x) || waiting_for_load.ContainsKey(x))
               {
                 return;
               }
@@ -318,30 +339,35 @@ namespace Mine
                   Chunk c = world.Generate(x.X, x.Y, x.Z);
                   c.Cull();
                   c.UpdateBuffer();
+
                   tcs.SetResult(c);
                 }
                 catch (Exception exc) { tcs.SetException(exc); }
               });
-              requested_chunk_tasks.Add(x, tcs.Task);
+              waiting_for_load.Add(x, tcs.Task);
             });
 
-            foreach (var chunk in world.loaded_chunks)
+            List<Point3> chunk_keys = new List<Point3>();
+            foreach (var chunk_key in world.loaded_chunks.Keys)
             {
-              if (!nearest.Contains(chunk.Key))
+              chunk_keys.Add(chunk_key);
+            }              
+           foreach (var chunk_key in chunk_keys)
+            {
+              if (!nearest_for_delete.Contains(chunk_key))
               {
                 Chunk matching = null;
-                world.loaded_chunks.TryRemove(chunk.Key, out matching);
+                world.loaded_chunks.TryGetValue(chunk_key, out matching);
                 if (matching != null)
                 {
                   if (matching.vertex_count > 0)
                   {
                     matching.vertex_buffer.Dispose();
-
                   }
+                  world.loaded_chunks.Remove(chunk_key);
                 }
               }
             }
-
             base.Update(gameTime);
         }
         private void MoveTo(Vector3 pos, Vector3 rot)
@@ -374,21 +400,51 @@ namespace Mine
         }
         protected override void Draw(GameTime gameTime)
         {
+            frameCounter++;
+
             GraphicsDevice.Clear(Color.SkyBlue);
-            if (this.texture == null) {
+           //GraphicsDevice.BlendState = BlendState.NonPremultiplied;  need to draw transparent stuff later.
+            GraphicsDevice.BlendState = BlendState.Opaque;
+            GraphicsDevice.DepthStencilState = DepthStencilState.Default;
+            GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
+
+            RasterizerState rasterizerState = new RasterizerState();
+            //rasterizerState.FillMode = FillMode.WireFrame;
+            //rasterizerState.CullMode = CullMode.None;
+            graphics.SynchronizeWithVerticalRetrace = true;
+            rasterizerState.MultiSampleAntiAlias = false;
+            GraphicsDevice.RasterizerState = rasterizerState;
+
+            if (this.stitched_blocks == null || this.Font1 == null) {
+              base.Draw(gameTime);
               return;
             }
-            cubeEffect.Texture = texture;
+           
+            int vertices = 0;
             cubeEffect.View = View;
             foreach (var chunk in world.loaded_chunks.Values)
             {
-                if(!chunk.active || chunk.vertex_count ==0){
-                    continue;
-                }
-                cubeEffect.CurrentTechnique.Passes[0].Apply();
-                GraphicsDevice.SetVertexBuffer(chunk.vertex_buffer);
-                GraphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, chunk.vertex_count);
+              if (!chunk.active || chunk.vertex_count == 0)
+              {
+                continue;
+              }
+              vertices+= chunk.vertex_count;
+              cubeEffect.CurrentTechnique.Passes[0].Apply();
+              GraphicsDevice.SetVertexBuffer(chunk.vertex_buffer);
+              GraphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, chunk.vertex_count);
+
             }
+            sprite_batch.Begin(SpriteSortMode.BackToFront, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone);
+
+
+            sprite_batch.DrawString(Font1, string.Format("fps: {0} mem : {1} MB", frameRate, GC.GetTotalMemory(false)/ 0x100000  ), new Vector2(10, 10), Color.Gray);
+             sprite_batch.DrawString(Font1, string.Format("chunks: {0} vertices : {1} ", world.loaded_chunks.Count, vertices) , new Vector2(10, 30), Color.Gray);
+
+           // sprite_batch.Draw(this.stitched_items, new Rectangle(300, 300, 128, 128), new Rectangle(16 * 5, 16 * 6, 16, 16), Color.White);
+            //sprite_batch.Draw(this.texture, new Vector2(10, 100), Color.White);
+
+            sprite_batch.End();
+            
             base.Draw(gameTime);
         }
     }

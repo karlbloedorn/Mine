@@ -39,12 +39,12 @@ namespace Mine
                     for (int y = 0; y < MineGame.chunk_size; y++)
                     {
                         var pvalue = noise_plane.GetValue((chunk_x + x) / 125.5, (chunk_z + z) / 125.5);
-                        var height = 16 + pvalue * 12;
+                        var height = 5  + pvalue * 4;
                      
                         BlockType t;
                         if ((int) height == (chunk_y + y))
                         {
-                          t = BlockType.Sand;
+                          t = BlockType.Snow;
                         }
                         else if ((int)height > (chunk_y + y))
                         {
@@ -59,9 +59,13 @@ namespace Mine
                         blocks[x, y, z] = b;
                     }
                 }
+          
             }
+
+          /*
             if (chunk_x > 3 || chunk_z > 3) { return; }
 
+          
             Random random = new Random( (int)( 10000* noise_plane.GetValue((chunk_x) / 205.0, (chunk_z) / 205.0)));
 
             for (int i = 0; i <2; i++)
@@ -116,7 +120,8 @@ namespace Mine
                       }
                     }
                 }
-            }
+           
+          }*/
         }
         public void Cull(){
             vertex_count = 0;
