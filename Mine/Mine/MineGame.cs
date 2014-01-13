@@ -9,6 +9,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,35 +17,36 @@ namespace Mine
 {
     public class MineGame : Game
     {
-        public static int chunk_size = 16;
+        public static int chunk_size =16 ;
+        public static int chunk_height = 32;
+        private Planet planet;
         const float tex_w = 256;
         const float tex_h = 272;
         const float tile_w = 16;
         const float tile_h = 16;
         const float w_factor = tile_w / tex_w;
         const float h_factor = tile_h / tex_h;
-
         int frameCounter = 0;
         int frameRate = 0;
         TimeSpan elapsedTime = TimeSpan.Zero;
-
         Texture2D stitched_blocks;
         Texture2D stitched_items;
         public Dictionary<BlockType, Vector2[,]> texture_coordinates;
-        public Dictionary<Point3, Task<Chunk>> waiting_for_load;
-        public Dictionary<Point3, Task<Chunk>> waiting_for_setbuffer;
-
+        public Dictionary<Coordinate, Task<Quadrangle>> waiting_for_load;
+        public Dictionary<Coordinate, Task<Quadrangle>> waiting_for_setbuffer;
+        float latitude = 0;
+        float longitude = 50;
+        float height = 3095;
         GraphicsDeviceManager graphics;
         SpriteBatch sprite_batch;
         private SpriteFont Font1;
-        World world;
         private BasicEffect cubeEffect;
         private MouseState prevMouseState;
         private Vector3 mouseRotationBuffer;   
         private Vector3 cameraPosition;
         private Vector3 cameraRotation;
         private Vector3 cameraLookAt;
-        private float cameraSpeed = 109.0f;
+        private float cameraSpeed = 20019.0f;
         public Vector3 Position
         {
             get { return cameraPosition; }
@@ -83,12 +85,9 @@ namespace Mine
         }
         protected override void Initialize()
         {
-          ThreadPool.SetMaxThreads(14, 14);
-
             texture_coordinates = new Dictionary<BlockType, Vector2[,]>();
-            
-            waiting_for_load = new Dictionary<Point3, Task<Chunk>>();
-            waiting_for_setbuffer = new Dictionary<Point3, Task<Chunk>>();
+            waiting_for_load = new Dictionary<Coordinate, Task<Quadrangle>>();
+            waiting_for_setbuffer = new Dictionary<Coordinate, Task<Quadrangle>>();
             Font1 = Content.Load<SpriteFont>("Courier New");
             stitched_blocks = LoadTexture("stitched_blocks");
             stitched_items = LoadTexture("stitched_items");
@@ -109,54 +108,37 @@ namespace Mine
             AddTextureCoordinates(BlockType.Birch_Leaves, 2, 10);
             AddTextureCoordinates(BlockType.Crafting_Table, 4, 9, 3, 8, 4, 13);
 
-
             cubeEffect = new BasicEffect(GraphicsDevice);
             cubeEffect.Texture = stitched_blocks;
-            cubeEffect.LightingEnabled = true;
-            cubeEffect.AmbientLightColor = new Vector3(0.5f, 0.5f, 0.5f);
-            cubeEffect.DiffuseColor = new Vector3(0.5f, 0.5f, 0.5f);
-            cubeEffect.SpecularColor = new Vector3(0.25f, 0.25f, 0.25f);
-            cubeEffect.SpecularPower = 4.0f;
-            cubeEffect.Alpha = 1.0f;
-           
-            if (cubeEffect.LightingEnabled)
-            {
-                cubeEffect.DirectionalLight1.Enabled = true;
-                if (cubeEffect.DirectionalLight1.Enabled)
-                {
-                    // y direction
-                    cubeEffect.DirectionalLight1.DiffuseColor = new Vector3(0.35f, 0.35f, 0.35f);
-                    cubeEffect.DirectionalLight1.Direction = Vector3.Normalize(new Vector3(0, -1, 0));
-                    cubeEffect.DirectionalLight1.SpecularColor = Vector3.One;
-                }
-                cubeEffect.PreferPerPixelLighting = true;
-            }
-             
+            cubeEffect.LightingEnabled = false;
             cubeEffect.TextureEnabled = true;
 
             Projection = Matrix.CreatePerspectiveFieldOfView(
                 MathHelper.PiOver4,
                 GraphicsDevice.Viewport.AspectRatio,
-                0.05f,
-                1000.0f);
+                50.05f,
+                90000.0f);
             cubeEffect.Projection = Projection;
             GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
-
-            MoveTo(new Vector3(0f,40f, -250f), new Vector3(0f, 0f, 0f));
-
+            cubeEffect.VertexColorEnabled = true;
+            MoveTo(new Vector3(0f,40f, 0f), new Vector3(0f, 0f, 0f));
             int centerX = GraphicsDevice.Viewport.Width / 2;
             int centerY = GraphicsDevice.Viewport.Height / 2;
             Mouse.SetPosition(centerX, centerY);
-
             prevMouseState = Mouse.GetState();
             this.IsMouseVisible = false;
+            planet = new Planet(26000f);
+            planet.game = this;
+            planet.loaded_quadrangles = new Dictionary<Coordinate, Quadrangle>();
+            planet.requested_quadrangles = new Dictionary<Coordinate, Quadrangle>();
 
-            world = new World();
-            world.game = this;
-            world.loaded_chunks = new Dictionary<Point3, Chunk>();
-            world.requested_chunks = new Dictionary<Point3, Chunk>();
-
-            world.GraphicsDevice = GraphicsDevice;
+            for (int j =-planet.chunks_latitude / 4 +1; j < planet.chunks_latitude / 4 - 1; j++)
+            {
+              for (int i = -planet.chunks_longitude; i < planet.chunks_longitude; i++)
+              {
+                planet.requested_quadrangles.Add(new Coordinate(planet.step * 16 * j, planet.step * 16 * i, planet.radial_distance), null);
+              }
+            }
             base.Initialize();
         }
         private void AddTextureCoordinates(BlockType t, short x, short y)
@@ -166,18 +148,18 @@ namespace Mine
         private void AddTextureCoordinates(BlockType t, short sides_x, short sides_y, short top_x, short top_y, short bottom_x, short bottom_y)
         {
           short[,] faces = new short[6, 2];
-          faces[Block.XNegative, 0] = sides_x;
-          faces[Block.XPositive, 0] = sides_x;
-          faces[Block.YNegative, 0] = bottom_x;
-          faces[Block.YPositive, 0] = top_x;
-          faces[Block.ZNegative, 0] = sides_x;
-          faces[Block.ZPositive, 0] = sides_x;
-          faces[Block.XNegative, 1] = sides_y;
-          faces[Block.XPositive, 1] = sides_y;
-          faces[Block.YNegative, 1] = bottom_y;
-          faces[Block.YPositive, 1] = top_y;
-          faces[Block.ZNegative, 1] = sides_y;
-          faces[Block.ZPositive, 1] = sides_y;
+          faces[Block.west_face, 0] = sides_x;
+          faces[Block.east_face, 0] = sides_x;
+          faces[Block.bottom_face, 0] = bottom_x;
+          faces[Block.top_face , 0] = top_x;
+          faces[Block.north_face, 0] = sides_x;
+          faces[Block.south_face, 0] = sides_x;
+          faces[Block.east_face, 1] = sides_y;
+          faces[Block.west_face, 1] = sides_y;
+          faces[Block.bottom_face, 1] = bottom_y;
+          faces[Block.top_face, 1] = top_y;
+          faces[Block.north_face, 1] = sides_y;
+          faces[Block.south_face, 1] = sides_y;
 
           Vector2[,] cur_coordinates = new Vector2[6, 4];
 
@@ -202,12 +184,10 @@ namespace Mine
         }
         protected override void LoadContent()
         {
-            // Create a new SpriteBatch, which can be used to draw textures.
             sprite_batch = new SpriteBatch(GraphicsDevice);
         }
         protected override void UnloadContent()
         {
-            // TODO: Unload any non ContentManager content here
         }
         protected override void Update(GameTime gameTime)
         {
@@ -218,13 +198,24 @@ namespace Mine
             frameRate = frameCounter;
             frameCounter = 0;
           }
-
-
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             if (this.IsActive)
             {
                 KeyboardState ks = Keyboard.GetState();
+                if (ks.IsKeyDown(Keys.T))
+                   latitude += dt * cameraSpeed * 1;
+                if (ks.IsKeyDown(Keys.G))
+                  latitude -= dt * cameraSpeed * 1;
+                if (ks.IsKeyDown(Keys.R))
+                  height += dt * cameraSpeed * 4;
+                if (ks.IsKeyDown(Keys.V))
+                  height -= dt * cameraSpeed * 4;
+                if (ks.IsKeyDown(Keys.H))
+                  longitude -= dt * cameraSpeed * 1;
+                if (ks.IsKeyDown(Keys.F))
+                  longitude += dt * cameraSpeed * 1;
+
                 if (ks.IsKeyDown(Keys.Escape))
                 {
                     this.Exit();
@@ -235,6 +226,7 @@ namespace Mine
                     int z = (int)Math.Round(Position.Z/2.0);
                 }
                 Vector3 moveVector = Vector3.Zero;
+
                 if (ks.IsKeyDown(Keys.Q))
                     moveVector.Y = 1;
                 if (ks.IsKeyDown(Keys.Z))
@@ -247,6 +239,7 @@ namespace Mine
                     moveVector.X = 1;
                 if (ks.IsKeyDown(Keys.D))
                     moveVector.X = -1;
+
                 if (moveVector != Vector3.Zero)
                 {
                     //normalize that vector
@@ -282,7 +275,7 @@ namespace Mine
                         mouseRotationBuffer.Y = mouseRotationBuffer.Y - (mouseRotationBuffer.Y - MathHelper.ToRadians(90.0f));
 
                     Rotation = new Vector3(-MathHelper.Clamp(mouseRotationBuffer.Y, MathHelper.ToRadians(-75.0f),
-                        MathHelper.ToRadians(90.0f)), MathHelper.WrapAngle(mouseRotationBuffer.X), 0);
+                        MathHelper.ToRadians(90.0f)), MathHelper.WrapAngle(mouseRotationBuffer.X),0 );
 
                     deltaX = 0;
                     deltaY = 0;
@@ -290,24 +283,24 @@ namespace Mine
                 Mouse.SetPosition(centerX, centerY);
                 prevMouseState = currentMouseState;
             }
-
-            List<Point3> finishedTasks = new List<Point3>();
+           
+            List<Coordinate> finishedTasks = new List<Coordinate>();
 
             int count = 0;
             foreach (var task in waiting_for_load)
             {
               if (task.Value.IsCompleted)
               {
-                Chunk c = task.Value.Result;
+                Quadrangle c = task.Value.Result;
                 if (c.vertex_count > 0)
                 {
                   count++;
-                  c.vertex_buffer = new VertexBuffer(GraphicsDevice, VertexPositionNormalTexture.VertexDeclaration, c.vertex_count, BufferUsage.WriteOnly);
+                  c.vertex_buffer = new VertexBuffer(GraphicsDevice, VertexPositionColorTexture.VertexDeclaration, c.vertex_count, BufferUsage.WriteOnly);
                   c.vertex_buffer.SetData(c.block_vertices);
-
+                  c.block_vertices = null;
                 }
                 c.active = true;
-                world.loaded_chunks.Add(task.Key, c);
+                planet.loaded_quadrangles.Add(task.Key, c);
                 finishedTasks.Add(task.Key);
                 if (count > 3)
                 {
@@ -321,53 +314,57 @@ namespace Mine
             }
             finishedTasks.Clear();
 
-            var nearest = world.Near(this.Position,10);
-            var nearest_for_delete = world.Near(this.Position, 20);
-
+            //var nearest = world.Near(this.Position,7);
+            //var nearest_for_delete = world.Near(this.Position, 10);
+            var nearest = this.planet.requested_quadrangles.Keys.ToList();
             nearest.ForEach(x =>
             {
-              if (world.loaded_chunks.ContainsKey(x) || waiting_for_load.ContainsKey(x))
+              if (waiting_for_load.Count() > 5 ||  planet.loaded_quadrangles.ContainsKey(x) || waiting_for_load.ContainsKey(x))
               {
                 return;
               }
               
-              var tcs = new TaskCompletionSource<Chunk>();
+              var tcs = new TaskCompletionSource<Quadrangle>();
               ThreadPool.QueueUserWorkItem(_ =>
               {
                 try
                 {
-                  Chunk c = world.Generate(x.X, x.Y, x.Z);
-                  c.Cull();
-                  c.UpdateBuffer();
-
-                  tcs.SetResult(c);
+                  Quadrangle q = new Quadrangle(x.latitude, x.longitude, x.radial_distance);
+                  q.planet = planet;
+                  q.Generate();
+                  q.Cull(false);
+                  q.UpdateBuffer();
+                  tcs.SetResult(q);
                 }
                 catch (Exception exc) { tcs.SetException(exc); }
               });
               waiting_for_load.Add(x, tcs.Task);
             });
 
-            List<Point3> chunk_keys = new List<Point3>();
-            foreach (var chunk_key in world.loaded_chunks.Keys)
+            List<Coordinate> chunk_keys = new List<Coordinate>();
+            foreach (var chunk_key in planet.loaded_quadrangles.Keys)
             {
               chunk_keys.Add(chunk_key);
-            }              
+            }         
+          /*
            foreach (var chunk_key in chunk_keys)
             {
               if (!nearest_for_delete.Contains(chunk_key))
               {
-                Chunk matching = null;
-                world.loaded_chunks.TryGetValue(chunk_key, out matching);
+                Quadrangle matching = null;
+                planet.loaded_quadrangles.TryGetValue(chunk_key, out matching);
                 if (matching != null)
                 {
                   if (matching.vertex_count > 0)
                   {
                     matching.vertex_buffer.Dispose();
                   }
-                  world.loaded_chunks.Remove(chunk_key);
+                  planet.loaded_quadrangles.Remove(chunk_key);
                 }
               }
             }
+           */
+
             base.Update(gameTime);
         }
         private void MoveTo(Vector3 pos, Vector3 rot)
@@ -392,7 +389,7 @@ namespace Mine
         private void UpdateLookAt()
         {
             //Build a rotation matrix
-            Matrix rotationMatrix = Matrix.CreateRotationX(cameraRotation.X) * Matrix.CreateRotationY(cameraRotation.Y);
+            Matrix rotationMatrix =  Matrix.CreateRotationX(cameraRotation.X) * Matrix.CreateRotationY(cameraRotation.Y);
             //Build look at offset vector
             Vector3 lookAtOffset = Vector3.Transform(Vector3.UnitZ, rotationMatrix);
             //Update our camera's look at vector
@@ -401,16 +398,27 @@ namespace Mine
         protected override void Draw(GameTime gameTime)
         {
             frameCounter++;
-
             GraphicsDevice.Clear(Color.SkyBlue);
-           //GraphicsDevice.BlendState = BlendState.NonPremultiplied;  need to draw transparent stuff later.
+            //GraphicsDevice.BlendState = BlendState.NonPremultiplied;  need to draw transparent stuff later.
             GraphicsDevice.BlendState = BlendState.Opaque;
             GraphicsDevice.DepthStencilState = DepthStencilState.Default;
             GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
+            GraphicsDevice.SamplerStates[0].AddressU = TextureAddressMode.Wrap;
+            GraphicsDevice.SamplerStates[0].AddressV = TextureAddressMode.Wrap;
+            GraphicsDevice.SamplerStates[0].AddressW = TextureAddressMode.Wrap;
 
             RasterizerState rasterizerState = new RasterizerState();
-            //rasterizerState.FillMode = FillMode.WireFrame;
-            //rasterizerState.CullMode = CullMode.None;
+            KeyboardState ks = Keyboard.GetState();
+            if (ks.IsKeyDown(Keys.Space))
+            {
+              rasterizerState.FillMode = FillMode.WireFrame;
+              rasterizerState.CullMode = CullMode.None;
+            }
+            else
+            {
+              rasterizerState.CullMode = CullMode.CullCounterClockwiseFace;
+            }
+
             graphics.SynchronizeWithVerticalRetrace = true;
             rasterizerState.MultiSampleAntiAlias = false;
             GraphicsDevice.RasterizerState = rasterizerState;
@@ -422,29 +430,35 @@ namespace Mine
            
             int vertices = 0;
             cubeEffect.View = View;
-            foreach (var chunk in world.loaded_chunks.Values)
+
+            // var up = new Vector3(position.X, position.Y, position.Z);
+            // var position = planet.ToCartesian(height, latitude, longitude);
+            // var looking_at = planet.ToCartesian(height, latitude + 1, longitude);
+            //cubeEffect.View = Matrix.CreateLookAt(position, looking_at, up);
+
+            //up.Normalize();
+            //cubeEffect.View = Matrix.CreateLookAt(new Vector3(950, 0, 0), new Vector3(950,0, 1), new Vector3(1, 0,0)     );
+            
+            foreach (var quadrangle in planet.loaded_quadrangles.Values)
             {
-              if (!chunk.active || chunk.vertex_count == 0)
+              if (!quadrangle.active || quadrangle.vertex_count == 0)
               {
                 continue;
               }
-              vertices+= chunk.vertex_count;
+              vertices+= quadrangle.vertex_count;
               cubeEffect.CurrentTechnique.Passes[0].Apply();
-              GraphicsDevice.SetVertexBuffer(chunk.vertex_buffer);
-              GraphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, chunk.vertex_count);
-
+              GraphicsDevice.SetVertexBuffer(quadrangle.vertex_buffer);
+              GraphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, quadrangle.vertex_count);
             }
+           
             sprite_batch.Begin(SpriteSortMode.BackToFront, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone);
 
-
             sprite_batch.DrawString(Font1, string.Format("fps: {0} mem : {1} MB", frameRate, GC.GetTotalMemory(false)/ 0x100000  ), new Vector2(10, 10), Color.Gray);
-             sprite_batch.DrawString(Font1, string.Format("chunks: {0} vertices : {1} ", world.loaded_chunks.Count, vertices) , new Vector2(10, 30), Color.Gray);
-
+            //sprite_batch.DrawString(Font1, string.Format("latitude: {0} longitude : {1}",  latitude-90, longitude-180), new Vector2(10, 40), Color.Gray);
+            sprite_batch.DrawString(Font1, string.Format("quads: {0} vertices : {1} ", planet.loaded_quadrangles.Count, vertices) , new Vector2(10, 30), Color.Gray);
            // sprite_batch.Draw(this.stitched_items, new Rectangle(300, 300, 128, 128), new Rectangle(16 * 5, 16 * 6, 16, 16), Color.White);
             //sprite_batch.Draw(this.texture, new Vector2(10, 100), Color.White);
-
             sprite_batch.End();
-            
             base.Draw(gameTime);
         }
     }

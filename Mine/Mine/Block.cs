@@ -31,29 +31,41 @@ namespace Mine
 
     public class Block
     {
-        public const int XNegative = 0;
-        public const int XPositive = 1;
-        public const int YNegative = 2;
-        public const int YPositive = 3;
-        public const int ZNegative = 4;
-        public const int ZPositive = 5;
+        public const int north_face = 0;
+        public const int south_face = 1;
+        public const int bottom_face = 2;
+        public const int top_face = 3;
+        public const int east_face = 4;
+        public const int west_face = 5;
         public const int textureBottomLeft = 0;
         public const int textureTopLeft = 1;
         public const int textureTopRight = 2;
         public const int textureBottomRight = 3;
-
-        public Vector3 shapePosition;
+        public float latitude = 0;
+        public float longitude = 0;
+        public float radial_distance = 0;
         public BlockType type;
         public bool active;
         public short[] render_faces = new short[6];
-        public Block(float x, float y, float z, BlockType t)
+        public bool combine_primary;
+        public int combine_height;
+        
+        public Block(float latitude, float longitude, float radial_distance, BlockType t)
         {
-            this.shapePosition = new Vector3(x, y, z);
+            this.latitude = latitude;
+            this.longitude = longitude;
+            this.radial_distance = radial_distance;
             this.type = t;
         }
-        public int renderedVerticeCount()
+        public int rendered_vertice_count()
         {
             return render_faces[0] + render_faces[1] + render_faces[2] + render_faces[3] + render_faces[4] + render_faces[5];
         }
+
+        public bool are_combinable(Block other)
+        {
+          return  this.type == other.type && Enumerable.SequenceEqual( this.render_faces ,other.render_faces);
+        }
+
     }
 }
