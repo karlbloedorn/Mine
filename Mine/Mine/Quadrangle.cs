@@ -251,7 +251,6 @@ namespace Mine
         }
       }
     }
-
     public Vector3 ToCartesian(float r, float latitude, float longitude)
     {
       return new Vector3(

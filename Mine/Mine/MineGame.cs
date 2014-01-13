@@ -117,7 +117,7 @@ namespace Mine
                 MathHelper.PiOver4,
                 GraphicsDevice.Viewport.AspectRatio,
                 50.05f,
-                90000.0f);
+                100000.0f);
             cubeEffect.Projection = Projection;
             GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
             cubeEffect.VertexColorEnabled = true;
@@ -127,7 +127,7 @@ namespace Mine
             Mouse.SetPosition(centerX, centerY);
             prevMouseState = Mouse.GetState();
             this.IsMouseVisible = false;
-            planet = new Planet(26000f);
+            planet = new Planet(20000f);
             planet.game = this;
             planet.loaded_quadrangles = new Dictionary<Coordinate, Quadrangle>();
             planet.requested_quadrangles = new Dictionary<Coordinate, Quadrangle>();
@@ -420,7 +420,7 @@ namespace Mine
             }
 
             graphics.SynchronizeWithVerticalRetrace = true;
-            rasterizerState.MultiSampleAntiAlias = false;
+            rasterizerState.MultiSampleAntiAlias = true;
             GraphicsDevice.RasterizerState = rasterizerState;
 
             if (this.stitched_blocks == null || this.Font1 == null) {
@@ -433,8 +433,8 @@ namespace Mine
 
             // var up = new Vector3(position.X, position.Y, position.Z);
             // var position = planet.ToCartesian(height, latitude, longitude);
-            // var looking_at = planet.ToCartesian(height, latitude + 1, longitude);
-            //cubeEffect.View = Matrix.CreateLookAt(position, looking_at, up);
+           //  var looking_at = planet.ToCartesian(height, latitude + 1, longitude);
+           // cubeEffect.View = Matrix.CreateLookAt(position, looking_at, up);
 
             //up.Normalize();
             //cubeEffect.View = Matrix.CreateLookAt(new Vector3(950, 0, 0), new Vector3(950,0, 1), new Vector3(1, 0,0)     );
