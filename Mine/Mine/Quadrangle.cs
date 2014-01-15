@@ -39,13 +39,13 @@ namespace Mine
             var block_radial_distance = (height_offset*planet.height_step + radial_distance);
             var block_latitude = latitude + latitude_offset * planet.step;
             var block_longitude = longitude + longitude_offset * planet.step;
-            var pvalue = planet.noise.GetValue(block_latitude, block_longitude*2);
-            var terrain_height = planet.radial_distance + 10*planet.height_step +  (int)(  Math.Abs(pvalue * 3000));
+            var pvalue = planet.noise.GetValue(block_latitude, block_longitude);
+            var terrain_height = (int)( 34 * Math.Abs(pvalue));
 
             var equator = 25.0 * planet.equator_noise.GetValue(block_longitude/3000.0);
 
             BlockType t;
-            if ( (block_radial_distance - terrain_height ) < 1)
+            if ((height_offset - terrain_height) < 1)
             {
               if (height_offset > 18)
               {
@@ -251,6 +251,7 @@ namespace Mine
         }
       }
     }
+
     public Vector3 ToCartesian(float r, float latitude, float longitude)
     {
       return new Vector3(

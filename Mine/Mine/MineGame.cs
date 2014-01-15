@@ -17,9 +17,13 @@ namespace Mine
 {
     public class MineGame : Game
     {
+        public static float gravity = -9.8f;
         public static int chunk_size =16 ;
         public static int chunk_height = 32;
+
+        private Vector3 player_speed = Vector3.Zero;
         private Planet planet;
+        private int limit_latitude = 80;
         const float tex_w = 256;
         const float tex_h = 272;
         const float tile_w = 16;
@@ -33,10 +37,10 @@ namespace Mine
         Texture2D stitched_items;
         public Dictionary<BlockType, Vector2[,]> texture_coordinates;
         public Dictionary<Coordinate, Task<Quadrangle>> waiting_for_load;
-        public Dictionary<Coordinate, Task<Quadrangle>> waiting_for_setbuffer;
+
         float latitude = 0;
         float longitude = 50;
-        float height = 3095;
+        float height =0;
         GraphicsDeviceManager graphics;
         SpriteBatch sprite_batch;
         private SpriteFont Font1;
@@ -46,7 +50,7 @@ namespace Mine
         private Vector3 cameraPosition;
         private Vector3 cameraRotation;
         private Vector3 cameraLookAt;
-        private float cameraSpeed = 20019.0f;
+        private float cameraSpeed = 1.0f;
         public Vector3 Position
         {
             get { return cameraPosition; }
@@ -74,7 +78,14 @@ namespace Mine
         {
             get
             {
-                return Matrix.CreateLookAt(cameraPosition, cameraLookAt, Vector3.Up);
+
+              var up = planet.ToCartesian(height + 1, latitude, longitude);
+              var position = planet.ToCartesian(height, latitude, longitude);
+              var looking_at = planet.ToCartesian(height, latitude + 1, longitude);
+              return Matrix.CreateLookAt(position, position + cameraLookAt, up);
+
+
+              //  return Matrix.CreateLookAt(cameraPosition, cameraLookAt, Vector3.Up);
             }
         }
         public MineGame()
@@ -87,7 +98,6 @@ namespace Mine
         {
             texture_coordinates = new Dictionary<BlockType, Vector2[,]>();
             waiting_for_load = new Dictionary<Coordinate, Task<Quadrangle>>();
-            waiting_for_setbuffer = new Dictionary<Coordinate, Task<Quadrangle>>();
             Font1 = Content.Load<SpriteFont>("Courier New");
             stitched_blocks = LoadTexture("stitched_blocks");
             stitched_items = LoadTexture("stitched_items");
@@ -116,8 +126,8 @@ namespace Mine
             Projection = Matrix.CreatePerspectiveFieldOfView(
                 MathHelper.PiOver4,
                 GraphicsDevice.Viewport.AspectRatio,
-                50.05f,
-                100000.0f);
+                10.05f,
+                40000.0f);
             cubeEffect.Projection = Projection;
             GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
             cubeEffect.VertexColorEnabled = true;
@@ -127,18 +137,11 @@ namespace Mine
             Mouse.SetPosition(centerX, centerY);
             prevMouseState = Mouse.GetState();
             this.IsMouseVisible = false;
-            planet = new Planet(20000f);
+            planet = new Planet(200000f);
             planet.game = this;
             planet.loaded_quadrangles = new Dictionary<Coordinate, Quadrangle>();
             planet.requested_quadrangles = new Dictionary<Coordinate, Quadrangle>();
-
-            for (int j =-planet.chunks_latitude / 4 +1; j < planet.chunks_latitude / 4 - 1; j++)
-            {
-              for (int i = -planet.chunks_longitude; i < planet.chunks_longitude; i++)
-              {
-                planet.requested_quadrangles.Add(new Coordinate(planet.step * 16 * j, planet.step * 16 * i, planet.radial_distance), null);
-              }
-            }
+            height = planet.radial_distance + planet.height_step *10;
             base.Initialize();
         }
         private void AddTextureCoordinates(BlockType t, short x, short y)
@@ -200,6 +203,13 @@ namespace Mine
           }
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
+            //player_speed = new Vector3(player_speed.X, player_speed.Y, player_speed.Z -= 200*gravity*dt);
+            //height -= player_speed.Z * dt;
+
+
+
+
+
             if (this.IsActive)
             {
                 KeyboardState ks = Keyboard.GetState();
@@ -208,13 +218,27 @@ namespace Mine
                 if (ks.IsKeyDown(Keys.G))
                   latitude -= dt * cameraSpeed * 1;
                 if (ks.IsKeyDown(Keys.R))
-                  height += dt * cameraSpeed * 4;
+                  height += dt * cameraSpeed * 400;
                 if (ks.IsKeyDown(Keys.V))
-                  height -= dt * cameraSpeed * 4;
+                  height -= dt * cameraSpeed * 400;
                 if (ks.IsKeyDown(Keys.H))
                   longitude -= dt * cameraSpeed * 1;
                 if (ks.IsKeyDown(Keys.F))
                   longitude += dt * cameraSpeed * 1;
+
+                if (latitude < -limit_latitude)
+                {
+                  latitude = -limit_latitude;
+                }
+                if (latitude > limit_latitude)
+                {
+                  latitude = limit_latitude;
+                }
+                longitude = longitude % 360;
+                if (longitude < 0)
+                {
+                  longitude = longitude + 360;
+                }
 
                 if (ks.IsKeyDown(Keys.Escape))
                 {
@@ -246,7 +270,7 @@ namespace Mine
                     //so that we don't move faster diagonally
                     moveVector.Normalize();
                     //Now we add in smooth and speed
-                    moveVector *= dt * cameraSpeed;
+                    moveVector *= dt * cameraSpeed*1000;
 
                     //Move camera
                     Move(moveVector);
@@ -302,7 +326,7 @@ namespace Mine
                 c.active = true;
                 planet.loaded_quadrangles.Add(task.Key, c);
                 finishedTasks.Add(task.Key);
-                if (count > 3)
+                if (count > 4)
                 {
                   break;
                 }
@@ -314,16 +338,21 @@ namespace Mine
             }
             finishedTasks.Clear();
 
-            //var nearest = world.Near(this.Position,7);
+            var nearest = planet.Near(latitude, longitude,9);
+            var nearest_for_delete = planet.Near(latitude, longitude, 15);
+
             //var nearest_for_delete = world.Near(this.Position, 10);
-            var nearest = this.planet.requested_quadrangles.Keys.ToList();
+            //var nearest = this.planet.requested_quadrangles.Keys.ToList();
             nearest.ForEach(x =>
             {
+              if (Math.Abs(x.latitude) > limit_latitude)
+              {
+                return;
+              }
               if (waiting_for_load.Count() > 5 ||  planet.loaded_quadrangles.ContainsKey(x) || waiting_for_load.ContainsKey(x))
               {
                 return;
               }
-              
               var tcs = new TaskCompletionSource<Quadrangle>();
               ThreadPool.QueueUserWorkItem(_ =>
               {
@@ -341,29 +370,28 @@ namespace Mine
               waiting_for_load.Add(x, tcs.Task);
             });
 
-            List<Coordinate> chunk_keys = new List<Coordinate>();
-            foreach (var chunk_key in planet.loaded_quadrangles.Keys)
+            List<Coordinate> quad_keys = new List<Coordinate>();
+            foreach (var quad_key in planet.loaded_quadrangles.Keys)
             {
-              chunk_keys.Add(chunk_key);
+              quad_keys.Add(quad_key);
             }         
-          /*
-           foreach (var chunk_key in chunk_keys)
+          
+           foreach (var quad_key in quad_keys)
             {
-              if (!nearest_for_delete.Contains(chunk_key))
+              if (!nearest_for_delete.Contains(quad_key))
               {
                 Quadrangle matching = null;
-                planet.loaded_quadrangles.TryGetValue(chunk_key, out matching);
+                planet.loaded_quadrangles.TryGetValue(quad_key, out matching);
                 if (matching != null)
                 {
                   if (matching.vertex_count > 0)
                   {
                     matching.vertex_buffer.Dispose();
                   }
-                  planet.loaded_quadrangles.Remove(chunk_key);
+                  planet.loaded_quadrangles.Remove(quad_key);
                 }
               }
             }
-           */
 
             base.Update(gameTime);
         }
@@ -389,11 +417,11 @@ namespace Mine
         private void UpdateLookAt()
         {
             //Build a rotation matrix
-            Matrix rotationMatrix =  Matrix.CreateRotationX(cameraRotation.X) * Matrix.CreateRotationY(cameraRotation.Y);
+            Matrix rotationMatrix =  Matrix.CreateRotationX(-cameraRotation.Y) * Matrix.CreateRotationY(cameraRotation.X);
             //Build look at offset vector
             Vector3 lookAtOffset = Vector3.Transform(Vector3.UnitZ, rotationMatrix);
             //Update our camera's look at vector
-            cameraLookAt = cameraPosition + lookAtOffset;
+            cameraLookAt = /*cameraPosition +*/ lookAtOffset;
         }
         protected override void Draw(GameTime gameTime)
         {
@@ -431,10 +459,16 @@ namespace Mine
             int vertices = 0;
             cubeEffect.View = View;
 
-            // var up = new Vector3(position.X, position.Y, position.Z);
-            // var position = planet.ToCartesian(height, latitude, longitude);
-           //  var looking_at = planet.ToCartesian(height, latitude + 1, longitude);
-           // cubeEffect.View = Matrix.CreateLookAt(position, looking_at, up);
+            var up = planet.ToCartesian(height + 1, latitude, longitude);
+            var position = planet.ToCartesian(height, latitude, longitude);
+            var looking_at = planet.ToCartesian(height, latitude + 1, longitude);
+
+            
+
+
+
+            /// looking_at = Vector3.Zero;
+            // cubeEffect.View = Matrix.CreateLookAt(position, looking_at, up);
 
             //up.Normalize();
             //cubeEffect.View = Matrix.CreateLookAt(new Vector3(950, 0, 0), new Vector3(950,0, 1), new Vector3(1, 0,0)     );
@@ -454,11 +488,12 @@ namespace Mine
             sprite_batch.Begin(SpriteSortMode.BackToFront, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone);
 
             sprite_batch.DrawString(Font1, string.Format("fps: {0} mem : {1} MB", frameRate, GC.GetTotalMemory(false)/ 0x100000  ), new Vector2(10, 10), Color.Gray);
-            //sprite_batch.DrawString(Font1, string.Format("latitude: {0} longitude : {1}",  latitude-90, longitude-180), new Vector2(10, 40), Color.Gray);
+            sprite_batch.DrawString(Font1, string.Format("latitude: {0} longitude: {1}", latitude, 180-longitude), new Vector2(10, 80), Color.Gray);
             sprite_batch.DrawString(Font1, string.Format("quads: {0} vertices : {1} ", planet.loaded_quadrangles.Count, vertices) , new Vector2(10, 30), Color.Gray);
            // sprite_batch.Draw(this.stitched_items, new Rectangle(300, 300, 128, 128), new Rectangle(16 * 5, 16 * 6, 16, 16), Color.White);
             //sprite_batch.Draw(this.texture, new Vector2(10, 100), Color.White);
             sprite_batch.End();
+
             base.Draw(gameTime);
         }
     }
