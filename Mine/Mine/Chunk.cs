@@ -14,13 +14,13 @@ namespace Mine
         private int chunk_x;
         private int chunk_y;
         private int chunk_z;
-        private Block[, ,] blocks;
+        public Block[, ,] blocks;
         private MineGame game;
         public bool active;
         public bool buffer_ready;
         public int vertex_count = 0;
         public VertexBuffer vertex_buffer;
-        public VertexPositionNormalTexture[] block_vertices;
+        public VertexPositionColorTexture[] block_vertices;
         public int block_vertex_index = 0;
         public Chunk(MineGame g, int x, int y, int z)
         {
@@ -44,7 +44,7 @@ namespace Mine
                         BlockType t;
                         if ((int) height == (chunk_y + y))
                         {
-                          t = BlockType.Snow;
+                          t = BlockType.Grass;
                         }
                         else if ((int)height > (chunk_y + y))
                         {
@@ -140,7 +140,7 @@ namespace Mine
                         cur.render_faces[Block.YPositive] = Convert.ToInt16(y == MineGame.chunk_size - 1 || !blocks[x, y + 1, z].active);
                         cur.render_faces[Block.XNegative] = Convert.ToInt16(x == 0 || !blocks[x - 1, y, z].active);
                         cur.render_faces[Block.XPositive] = Convert.ToInt16(x == MineGame.chunk_size - 1 || !blocks[x + 1, y, z].active);
-                        cur.render_faces[Block.YNegative] = Convert.ToInt16(y == 0 || !blocks[x, y - 1, z].active);
+                        cur.render_faces[Block.YNegative] = Convert.ToInt16( (y == 0 || !blocks[x, y - 1, z].active) && chunk_y != 0);
                         cur.render_faces[Block.ZNegative] = Convert.ToInt16(z == 0 || !blocks[x, y, z - 1].active);
                         cur.render_faces[Block.ZPositive] = Convert.ToInt16(z == MineGame.chunk_size - 1 || !blocks[x, y, z + 1].active);
                         vertex_count += 6 * cur.renderedVerticeCount();
@@ -152,7 +152,7 @@ namespace Mine
         {
             if (vertex_count != 0)
             {
-                block_vertices = new VertexPositionNormalTexture[vertex_count];
+                block_vertices = new VertexPositionColorTexture[vertex_count];
                 block_vertex_index = 0;
             }
              
@@ -175,17 +175,17 @@ namespace Mine
                         Vector3 topRightBack = cur.shapePosition + new Vector3(0.5f, 0.5f, 0.5f);
                         Vector3 bottomLeftBack = cur.shapePosition + new Vector3(-0.5f, -0.5f, 0.5f);
                         Vector3 bottomRightBack = cur.shapePosition + new Vector3(0.5f, -0.5f, 0.5f);
-                        Vector3 frontNormal = new Vector3(0.0f, 0.0f, 1.0f);
-                        Vector3 backNormal = new Vector3(0.0f, 0.0f, -1.0f);
-                        Vector3 topNormal = new Vector3(0.0f, 1.0f, 0.0f) ;
-                        Vector3 bottomNormal = new Vector3(0.0f, -1.0f, 0.0f);
-                        Vector3 leftNormal = new Vector3(-1.0f, 0.0f, 0.0f);
-                        Vector3 rightNormal = new Vector3(1.0f, 0.0f, 0.0f);
-
+ 
                         for (int i = 0; i < 6; i++)
                         {
                           if (cur.render_faces[i] == 1) //render it
                           {
+                            var color = Color.White;
+                            if (cur.type == BlockType.Grass && i == Block.YPositive)
+                            {
+                              color = Color.FromNonPremultiplied(107, 168, 64, 255);
+                            } 
+
                             Vector2 textureTopLeft = game.texture_coordinates[cur.type][i, Block.textureTopLeft];
                             Vector2 textureBottomLeft = game.texture_coordinates[cur.type][i, Block.textureBottomLeft];
                             Vector2 textureTopRight = game.texture_coordinates[cur.type][i, Block.textureTopRight];
@@ -196,52 +196,52 @@ namespace Mine
                             switch (i)
                             {
                               case Block.ZNegative: //front
-                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftFront, frontNormal, textureTopLeft);
-                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomLeftFront, frontNormal, textureBottomLeft);
-                                block_vertices[offset + 2] = new VertexPositionNormalTexture(topRightFront, frontNormal, textureTopRight);
-                                block_vertices[offset + 3] = new VertexPositionNormalTexture(bottomLeftFront, frontNormal, textureBottomLeft);
-                                block_vertices[offset + 4] = new VertexPositionNormalTexture(bottomRightFront, frontNormal, textureBottomRight);
-                                block_vertices[offset + 5] = new VertexPositionNormalTexture(topRightFront, frontNormal, textureTopRight);
+                                block_vertices[offset + 0] = new VertexPositionColorTexture(topLeftFront, color, textureTopLeft);
+                                block_vertices[offset + 1] = new VertexPositionColorTexture(bottomLeftFront, color, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionColorTexture(topRightFront, color, textureTopRight);
+                                block_vertices[offset + 3] = new VertexPositionColorTexture(bottomLeftFront, color, textureBottomLeft);
+                                block_vertices[offset + 4] = new VertexPositionColorTexture(bottomRightFront, color, textureBottomRight);
+                                block_vertices[offset + 5] = new VertexPositionColorTexture(topRightFront, color, textureTopRight);
                                 break;
                               case Block.ZPositive: //back
-                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftBack, backNormal, textureTopRight);
-                                block_vertices[offset + 1] = new VertexPositionNormalTexture(topRightBack, backNormal, textureTopLeft);
-                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomLeftBack, backNormal, textureBottomRight);
-                                block_vertices[offset + 3] = new VertexPositionNormalTexture(bottomLeftBack, backNormal, textureBottomRight);
-                                block_vertices[offset + 4] = new VertexPositionNormalTexture(topRightBack, backNormal, textureTopLeft);
-                                block_vertices[offset + 5] = new VertexPositionNormalTexture(bottomRightBack, backNormal, textureBottomLeft);
+                                block_vertices[offset + 0] = new VertexPositionColorTexture(topLeftBack, color, textureTopRight);
+                                block_vertices[offset + 1] = new VertexPositionColorTexture(topRightBack, color, textureTopLeft);
+                                block_vertices[offset + 2] = new VertexPositionColorTexture(bottomLeftBack, color, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionColorTexture(bottomLeftBack, color, textureBottomRight);
+                                block_vertices[offset + 4] = new VertexPositionColorTexture(topRightBack, color, textureTopLeft);
+                                block_vertices[offset + 5] = new VertexPositionColorTexture(bottomRightBack, color, textureBottomLeft);
                                 break;
                               case Block.YPositive: //top
-                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftFront, topNormal, textureBottomLeft);
-                                block_vertices[offset + 1] = new VertexPositionNormalTexture(topRightBack, topNormal, textureTopRight);
-                                block_vertices[offset + 2] = new VertexPositionNormalTexture(topLeftBack, topNormal, textureTopLeft);
-                                block_vertices[offset + 3] = new VertexPositionNormalTexture(topLeftFront, topNormal, textureBottomLeft);
-                                block_vertices[offset + 4] = new VertexPositionNormalTexture(topRightFront, topNormal, textureBottomRight);
-                                block_vertices[offset + 5] = new VertexPositionNormalTexture(topRightBack, topNormal, textureTopRight);
+                                block_vertices[offset + 0] = new VertexPositionColorTexture(topLeftFront, color, textureBottomLeft);
+                                block_vertices[offset + 1] = new VertexPositionColorTexture(topRightBack, color, textureTopRight);
+                                block_vertices[offset + 2] = new VertexPositionColorTexture(topLeftBack, color, textureTopLeft);
+                                block_vertices[offset + 3] = new VertexPositionColorTexture(topLeftFront, color, textureBottomLeft);
+                                block_vertices[offset + 4] = new VertexPositionColorTexture(topRightFront, color, textureBottomRight);
+                                block_vertices[offset + 5] = new VertexPositionColorTexture(topRightBack, color, textureTopRight);
                                 break;
                               case Block.YNegative: //Bottom
-                                block_vertices[offset + 0] = new VertexPositionNormalTexture(bottomLeftFront, bottomNormal, textureTopLeft);
-                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomLeftBack, bottomNormal, textureBottomLeft);
-                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomRightBack, bottomNormal, textureBottomRight);
-                                block_vertices[offset + 3] = new VertexPositionNormalTexture(bottomLeftFront, bottomNormal, textureTopLeft);
-                                block_vertices[offset + 4] = new VertexPositionNormalTexture(bottomRightBack, bottomNormal, textureBottomRight);
-                                block_vertices[offset + 5] = new VertexPositionNormalTexture(bottomRightFront, bottomNormal, textureTopRight);
+                                block_vertices[offset + 0] = new VertexPositionColorTexture(bottomLeftFront, color, textureTopLeft);
+                                block_vertices[offset + 1] = new VertexPositionColorTexture(bottomLeftBack, color, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionColorTexture(bottomRightBack, color, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionColorTexture(bottomLeftFront, color, textureTopLeft);
+                                block_vertices[offset + 4] = new VertexPositionColorTexture(bottomRightBack, color, textureBottomRight);
+                                block_vertices[offset + 5] = new VertexPositionColorTexture(bottomRightFront, color, textureTopRight);
                                 break;
                               case Block.XPositive:  //Right
-                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topRightFront, rightNormal, textureTopLeft);
-                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomRightFront, rightNormal, textureBottomLeft);
-                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomRightBack, rightNormal, textureBottomRight);
-                                block_vertices[offset + 3] = new VertexPositionNormalTexture(topRightBack, rightNormal, textureTopRight);
-                                block_vertices[offset + 4] = new VertexPositionNormalTexture(topRightFront, rightNormal, textureTopLeft);
-                                block_vertices[offset + 5] = new VertexPositionNormalTexture(bottomRightBack, rightNormal, textureBottomRight);
+                                block_vertices[offset + 0] = new VertexPositionColorTexture(topRightFront, color, textureTopLeft);
+                                block_vertices[offset + 1] = new VertexPositionColorTexture(bottomRightFront, color, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionColorTexture(bottomRightBack, color, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionColorTexture(topRightBack, color, textureTopRight);
+                                block_vertices[offset + 4] = new VertexPositionColorTexture(topRightFront, color, textureTopLeft);
+                                block_vertices[offset + 5] = new VertexPositionColorTexture(bottomRightBack, color, textureBottomRight);
                                 break;
                               case Block.XNegative: //Left
-                                block_vertices[offset + 0] = new VertexPositionNormalTexture(topLeftFront, leftNormal, textureTopRight);
-                                block_vertices[offset + 1] = new VertexPositionNormalTexture(bottomLeftBack, leftNormal, textureBottomLeft);
-                                block_vertices[offset + 2] = new VertexPositionNormalTexture(bottomLeftFront, leftNormal, textureBottomRight);
-                                block_vertices[offset + 3] = new VertexPositionNormalTexture(topLeftBack, leftNormal, textureTopLeft);
-                                block_vertices[offset + 4] = new VertexPositionNormalTexture(bottomLeftBack, leftNormal, textureBottomLeft);
-                                block_vertices[offset + 5] = new VertexPositionNormalTexture(topLeftFront, leftNormal, textureTopRight);
+                                block_vertices[offset + 0] = new VertexPositionColorTexture(topLeftFront, color, textureTopRight);
+                                block_vertices[offset + 1] = new VertexPositionColorTexture(bottomLeftBack, color, textureBottomLeft);
+                                block_vertices[offset + 2] = new VertexPositionColorTexture(bottomLeftFront, color, textureBottomRight);
+                                block_vertices[offset + 3] = new VertexPositionColorTexture(topLeftBack, color, textureTopLeft);
+                                block_vertices[offset + 4] = new VertexPositionColorTexture(bottomLeftBack, color, textureBottomLeft);
+                                block_vertices[offset + 5] = new VertexPositionColorTexture(topLeftFront, color, textureTopRight);
                                 break;
                             }
                             block_vertex_index += 6;

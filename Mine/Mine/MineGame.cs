@@ -24,6 +24,7 @@ namespace Mine
         const float w_factor = tile_w / tex_w;
         const float h_factor = tile_h / tex_h;
 
+
         int frameCounter = 0;
         int frameRate = 0;
         TimeSpan elapsedTime = TimeSpan.Zero;
@@ -44,7 +45,10 @@ namespace Mine
         private Vector3 cameraPosition;
         private Vector3 cameraRotation;
         private Vector3 cameraLookAt;
-        private float cameraSpeed = 109.0f;
+        private float cameraSpeed = 5.0f;
+
+        private float speed_y = 0;
+      
         public Vector3 Position
         {
             get { return cameraPosition; }
@@ -109,40 +113,20 @@ namespace Mine
             AddTextureCoordinates(BlockType.Birch_Leaves, 2, 10);
             AddTextureCoordinates(BlockType.Crafting_Table, 4, 9, 3, 8, 4, 13);
 
-
             cubeEffect = new BasicEffect(GraphicsDevice);
             cubeEffect.Texture = stitched_blocks;
-            cubeEffect.LightingEnabled = true;
-            cubeEffect.AmbientLightColor = new Vector3(0.5f, 0.5f, 0.5f);
-            cubeEffect.DiffuseColor = new Vector3(0.5f, 0.5f, 0.5f);
-            cubeEffect.SpecularColor = new Vector3(0.25f, 0.25f, 0.25f);
-            cubeEffect.SpecularPower = 4.0f;
-            cubeEffect.Alpha = 1.0f;
-           
-            if (cubeEffect.LightingEnabled)
-            {
-                cubeEffect.DirectionalLight1.Enabled = true;
-                if (cubeEffect.DirectionalLight1.Enabled)
-                {
-                    // y direction
-                    cubeEffect.DirectionalLight1.DiffuseColor = new Vector3(0.35f, 0.35f, 0.35f);
-                    cubeEffect.DirectionalLight1.Direction = Vector3.Normalize(new Vector3(0, -1, 0));
-                    cubeEffect.DirectionalLight1.SpecularColor = Vector3.One;
-                }
-                cubeEffect.PreferPerPixelLighting = true;
-            }
-             
+            cubeEffect.LightingEnabled = false;
             cubeEffect.TextureEnabled = true;
+            cubeEffect.VertexColorEnabled = true;
 
-            Projection = Matrix.CreatePerspectiveFieldOfView(
-                MathHelper.PiOver4,
+            Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(70),
                 GraphicsDevice.Viewport.AspectRatio,
-                0.05f,
+                0.001f,
                 1000.0f);
             cubeEffect.Projection = Projection;
             GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
 
-            MoveTo(new Vector3(0f,40f, -250f), new Vector3(0f, 0f, 0f));
+            MoveTo(new Vector3(5f,10f, 5f), new Vector3(0f, 0f, 0f));
 
             int centerX = GraphicsDevice.Viewport.Width / 2;
             int centerY = GraphicsDevice.Viewport.Height / 2;
@@ -235,29 +219,48 @@ namespace Mine
                     int z = (int)Math.Round(Position.Z/2.0);
                 }
                 Vector3 moveVector = Vector3.Zero;
+              /*
                 if (ks.IsKeyDown(Keys.Q))
                     moveVector.Y = 1;
                 if (ks.IsKeyDown(Keys.Z))
                     moveVector.Y = -1;
-                if (ks.IsKeyDown(Keys.W))
+               */
+
+              
+                  if (ks.IsKeyDown(Keys.W))
                     moveVector.Z = 1;
-                if (ks.IsKeyDown(Keys.S))
+                  if (ks.IsKeyDown(Keys.S))
                     moveVector.Z = -1;
-                if (ks.IsKeyDown(Keys.A))
+                  if (ks.IsKeyDown(Keys.A))
                     moveVector.X = 1;
-                if (ks.IsKeyDown(Keys.D))
+                  if (ks.IsKeyDown(Keys.D))
                     moveVector.X = -1;
+               
+      
                 if (moveVector != Vector3.Zero)
                 {
-                    //normalize that vector
-                    //so that we don't move faster diagonally
-                    moveVector.Normalize();
-                    //Now we add in smooth and speed
-                    moveVector *= dt * cameraSpeed;
+                  //normalize that vector
+                  //so that we don't move faster diagonally
+                  moveVector.Normalize();
+                  //Now we add in smooth and speed
+                  moveVector *= dt * cameraSpeed;
 
-                    //Move camera
-                    Move(moveVector);
+                  //Move camera
                 }
+                if (ks.IsKeyDown(Keys.Space))
+                {
+                  if (speed_y == 0)
+                  {
+                    speed_y = 10.0f;
+                  }
+                }
+                speed_y -= 28.8f * dt;
+                moveVector.Y += speed_y * dt;
+                Move(moveVector);
+
+            
+
+
                 var currentMouseState = Mouse.GetState();
                 int centerX = GraphicsDevice.Viewport.Width / 2;
                 int centerY = GraphicsDevice.Viewport.Height / 2;
@@ -267,8 +270,9 @@ namespace Mine
                 float deltaY;
                 //Handle mouse movement
                 if (currentMouseState != prevMouseState)
+               
                 {
-                    //Get the change in mouse position
+                  //Get the change in mouse position
                     deltaX = Mouse.GetState().X - (centerX);
                     deltaY = Mouse.GetState().Y - (centerY);
 
@@ -286,6 +290,7 @@ namespace Mine
 
                     deltaX = 0;
                     deltaY = 0;
+                   
                 }
                 Mouse.SetPosition(centerX, centerY);
                 prevMouseState = currentMouseState;
@@ -302,7 +307,7 @@ namespace Mine
                 if (c.vertex_count > 0)
                 {
                   count++;
-                  c.vertex_buffer = new VertexBuffer(GraphicsDevice, VertexPositionNormalTexture.VertexDeclaration, c.vertex_count, BufferUsage.WriteOnly);
+                  c.vertex_buffer = new VertexBuffer(GraphicsDevice, VertexPositionColorTexture.VertexDeclaration, c.vertex_count, BufferUsage.WriteOnly);
                   c.vertex_buffer.SetData(c.block_vertices);
 
                 }
@@ -326,7 +331,7 @@ namespace Mine
 
             nearest.ForEach(x =>
             {
-              if (world.loaded_chunks.ContainsKey(x) || waiting_for_load.ContainsKey(x))
+              if (this.waiting_for_load.Count > 5 ||  world.loaded_chunks.ContainsKey(x) || waiting_for_load.ContainsKey(x))
               {
                 return;
               }
@@ -382,8 +387,60 @@ namespace Mine
             //Create a movement vector
             Vector3 movement = new Vector3(amount.X, amount.Y, amount.Z);
             movement = Vector3.Transform(movement, rotate);
-            //Return the value of camera position + movement vector
-            return cameraPosition + movement;
+            var proposed_location = cameraPosition + movement;
+
+            float userbox_x = 0.2f;
+            float userbox_y = 1.8f;
+            float userbox_z = 0.2f;
+
+            var a = world.RetrieveBlock(proposed_location.X - userbox_x, Position.Y + userbox_y, Position.Z);
+            var b = world.RetrieveBlock(proposed_location.X + userbox_x, Position.Y + userbox_y, Position.Z);
+            var c = world.RetrieveBlock(proposed_location.X - userbox_x, Position.Y - userbox_y, Position.Z);
+            var d = world.RetrieveBlock(proposed_location.X + userbox_x, Position.Y - userbox_y, Position.Z);
+
+            var e = world.RetrieveBlock(Position.X, Position.Y + userbox_y, proposed_location.Z + userbox_z);
+            var f = world.RetrieveBlock(Position.X, Position.Y + userbox_y, proposed_location.Z - userbox_z);
+            var g = world.RetrieveBlock(Position.X, Position.Y - userbox_y, proposed_location.Z + userbox_z);
+            var h = world.RetrieveBlock(Position.X, Position.Y - userbox_y, proposed_location.Z - userbox_z);
+
+            var i = world.RetrieveBlock(Position.X + userbox_x, proposed_location.Y + userbox_y, Position.Z + userbox_z);
+            var j = world.RetrieveBlock(Position.X + userbox_x, proposed_location.Y + userbox_y, Position.Z - userbox_z);
+            var k = world.RetrieveBlock(Position.X + userbox_x, proposed_location.Y - userbox_y, Position.Z + userbox_z);
+            var l = world.RetrieveBlock(Position.X + userbox_x, proposed_location.Y - userbox_y, Position.Z - userbox_z);
+            var m = world.RetrieveBlock(Position.X - userbox_x, proposed_location.Y + userbox_y, Position.Z + userbox_z);
+            var n = world.RetrieveBlock(Position.X - userbox_x, proposed_location.Y + userbox_y, Position.Z - userbox_z);
+            var o = world.RetrieveBlock(Position.X - userbox_x, proposed_location.Y - userbox_y, Position.Z + userbox_z);
+            var p = world.RetrieveBlock(Position.X - userbox_x, proposed_location.Y - userbox_y, Position.Z - userbox_z);
+
+            bool xOkay = true;
+            bool yOkay = true;
+            bool zOkay = true;
+
+            if ((a == null || a.type != BlockType.Air) || (b == null || b.type != BlockType.Air) || (c == null || c.type != BlockType.Air) || (d == null || d.type != BlockType.Air))
+            {
+                xOkay = false;
+            }
+            if ((e == null || e.type != BlockType.Air) || (f == null || f.type != BlockType.Air) || (g == null || g.type != BlockType.Air) || (h == null || h.type != BlockType.Air))
+            {
+                zOkay = false;
+            }
+
+            if (
+                (i == null || i.type != BlockType.Air) ||
+                (j == null || j.type != BlockType.Air) ||
+                (k == null || k.type != BlockType.Air) ||
+                (l == null || l.type != BlockType.Air) ||
+                (m == null || m.type != BlockType.Air) ||
+                (n == null || n.type != BlockType.Air) ||
+                (o == null || o.type != BlockType.Air)
+              )
+            {
+                yOkay = false;
+                speed_y = 0;
+            }
+             
+
+            return cameraPosition + new Vector3(xOkay ? movement.X : 0, yOkay ? movement.Y : 0 , zOkay ? movement.Z : 0);
         }
         private void Move(Vector3 scale)
         {
@@ -403,17 +460,26 @@ namespace Mine
             frameCounter++;
 
             GraphicsDevice.Clear(Color.SkyBlue);
-           //GraphicsDevice.BlendState = BlendState.NonPremultiplied;  need to draw transparent stuff later.
+            //GraphicsDevice.BlendState = BlendState.NonPremultiplied;  need to draw transparent stuff later.
             GraphicsDevice.BlendState = BlendState.Opaque;
             GraphicsDevice.DepthStencilState = DepthStencilState.Default;
             GraphicsDevice.SamplerStates[0] = SamplerState.PointWrap;
 
             RasterizerState rasterizerState = new RasterizerState();
-            //rasterizerState.FillMode = FillMode.WireFrame;
-            //rasterizerState.CullMode = CullMode.None;
             graphics.SynchronizeWithVerticalRetrace = true;
-            rasterizerState.MultiSampleAntiAlias = false;
+            rasterizerState.MultiSampleAntiAlias = true;
+            KeyboardState ks = Keyboard.GetState();
+            if (ks.IsKeyDown(Keys.LeftShift))
+            {
+              rasterizerState.FillMode = FillMode.WireFrame;
+              rasterizerState.CullMode = CullMode.None;
+            }
+            else
+            {
+              rasterizerState.CullMode = CullMode.CullCounterClockwiseFace;
+            }
             GraphicsDevice.RasterizerState = rasterizerState;
+          
 
             if (this.stitched_blocks == null || this.Font1 == null) {
               base.Draw(gameTime);
@@ -421,7 +487,13 @@ namespace Mine
             }
            
             int vertices = 0;
+           // Matrix scale = Matrix.CreateScale(2.0f);
             cubeEffect.View = View;
+              
+             
+
+
+
             foreach (var chunk in world.loaded_chunks.Values)
             {
               if (!chunk.active || chunk.vertex_count == 0)
@@ -434,17 +506,61 @@ namespace Mine
               GraphicsDevice.DrawPrimitives(PrimitiveType.TriangleList, 0, chunk.vertex_count);
 
             }
+          /*
+            Vector3 player = new Vector3(0.4,0.4,0.)
+
+            var blk = world.RetrieveBlock((int)Position.X, (int)(Position.Y-0.5), (int)Position.Z);
+            if (blk != null)
+            {
+              var vertexes = new[]
+            {
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+              new VertexPositionColorTexture(new Vector3(Position.X, Position.Y, Position.Z), Color.Red,new Vector2(0,0)),
+            };
+          */
+           //  var indicies = new short[] { 0, 1, 1,3, 2,3, 1,3,    4,5,5,6,6,7,7,4   };
+            //  GraphicsDevice.DrawUserIndexedPrimitives<VertexPositionColorTexture>(PrimitiveType.LineList, vertexes, 0, vertexes.Length, indicies, 0, indicies.Length - 1);
+            //
+
             sprite_batch.Begin(SpriteSortMode.BackToFront, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone);
-
-
             sprite_batch.DrawString(Font1, string.Format("fps: {0} mem : {1} MB", frameRate, GC.GetTotalMemory(false)/ 0x100000  ), new Vector2(10, 10), Color.Gray);
-             sprite_batch.DrawString(Font1, string.Format("chunks: {0} vertices : {1} ", world.loaded_chunks.Count, vertices) , new Vector2(10, 30), Color.Gray);
+            sprite_batch.DrawString(Font1, string.Format("chunks: {0} vertices : {1} ", world.loaded_chunks.Count, vertices) , new Vector2(10, 50), Color.Gray);
+            sprite_batch.DrawString(Font1, string.Format("x: {0} y : {1} z: {2}", Position.X, Position.Y, Position.Z), new Vector2(10, 90), Color.Gray);
+          //  sprite_batch.DrawString(Font1, string.Format("type: {0}", ""+  (blk != null ? blk.type : 0)), new Vector2(10, 140),Color.Gray);
 
-           // sprite_batch.Draw(this.stitched_items, new Rectangle(300, 300, 128, 128), new Rectangle(16 * 5, 16 * 6, 16, 16), Color.White);
-            //sprite_batch.Draw(this.texture, new Vector2(10, 100), Color.White);
+          /*
+            for (int i = -10; i <= 10; i++)
+            {
+              for (int j = -10; j <= 10; j++)
+              {
 
+                var a = world.RetrieveBlock(Position.X + i, Position.Y, Position.Z + j);
+
+                if (i == 0 && j == 0)
+                {
+                  sprite_batch.Draw(this.stitched_blocks, new Rectangle(1000 + i * 50, 100 + j * 50, 50, 50), new Rectangle(16 * 8, 16 * 10, 16, 16), Color.White);
+
+                }
+                else
+                {
+                  if (a != null && a.type != BlockType.Air)
+                  {
+                    sprite_batch.Draw(this.stitched_blocks, new Rectangle(1000 + i * 50, 100 + j * 50, 50, 50), new Rectangle(16 * 10, 16 * 8, 16, 16), Color.White);
+
+                  }
+                  // var coords = texture_coordinates[a.type][i, Block.textureTopLeft] ;
+
+                }
+              }
+            }
+          */
             sprite_batch.End();
-            
             base.Draw(gameTime);
         }
     }
